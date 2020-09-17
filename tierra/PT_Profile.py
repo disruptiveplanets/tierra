@@ -88,13 +88,13 @@ def Analytical_PT_Profile_Corrected(ParamPlanet,  NSpacing=500, Plot=False):
     P_z_analytical = P0/Const.P_atm*np.exp(-Integral)
 
     #Select the range of P
-    #SelectIndex = np.logical_and(P_z_analytical>1e-8,P_z_analytical<1e1)
+    SelectIndex = np.logical_and(P_z_analytical>1e-8,P_z_analytical<1e1)
 
 
     #Slice the index
-    #z_Values = z_Values[SelectIndex]
-    #T_z_analytical = T_z_analytical[SelectIndex]
-    #P_z_analytical = P_z_analytical[SelectIndex]
+    z_Values = z_Values[SelectIndex]
+    T_z_analytical = T_z_analytical[SelectIndex]
+    P_z_analytical = P_z_analytical[SelectIndex]
 
     #coef_P_n_z = P_z_analytical/P0
 

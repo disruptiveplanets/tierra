@@ -10,7 +10,6 @@ class TransmissionSpectroscopy:
         Initiate the transmission
         '''
 
-        Target.zValues*=1e5
 
 
         '''
@@ -22,16 +21,15 @@ class TransmissionSpectroscopy:
         self.Distance[np.isnan(self.Distance)]=0.0
         '''
 
-        sz = Target.NumLayers
-        z_ = Target.zValues
-        print(z_)
 
+        sz = Target.NumLayers
+        z_ = Target.zValuesCm
         self.dz_= np.concatenate(([z_[0]], z_[1:sz]-z_[:sz-1]))
         x__= np.zeros((sz-1,sz-1))
 
         for i in range(sz-1):
             for j in range(i,sz-1):
-                x__[i,j]=np.sqrt((Target.Rp+Target.zValues[j+1])**2.0-(Target.Rp+Target.zValues[i])**2.0);
+                x__[i,j]=np.sqrt((Target.Rp+Target.zValuesCm[j+1])**2.0-(Target.Rp+Target.zValuesCm[i])**2.0)
 
 
 
@@ -81,16 +79,12 @@ class TransmissionSpectroscopy:
 
 
         for self.CurrentLayer in range(Target.NumLayers):
-
-            print("Layer Number::",self.CurrentLayer)
             CurrentT = Target.TzAnalytical[self.CurrentLayer]
             CurrentP = np.log10(Target.PzAnalytical[self.CurrentLayer])
 
             TIndex = bisect(Target.TemperatureArray, CurrentT)
             PIndex = bisect(Target.PressureArray, CurrentP)
 
-            print("The temperature index is:", TIndex)
-            print("The pressure index is:", PIndex)
             Temp1, Temp2 = [Target.TemperatureArray[TIndex-1], Target.TemperatureArray[TIndex]]
             P1, P2 = [Target.PressureArray[PIndex-1], Target.PressureArray[PIndex]]
 
@@ -189,12 +183,6 @@ class TransmissionSpectroscopy:
 
                 co_p = (CurrentP-Target.PressureArray[PIndex-1])/(Target.PressureArray[PIndex]-Target.PressureArray[PIndex-1])
 
-                print("co_t::", co_t)
-                print("co_p::", co_p)
-                print("The pressure is::", CurrentP)
-                print("The temperature is::", CurrentT)
-
-
 
                 FirstTerm = np.matmul(Target.CrossSectionData[TIndex-1, PIndex-1,:,:], Target.nz[:, self.CurrentLayer])
                 SecondTerm = np.matmul(Target.CrossSectionData[TIndex-1, PIndex,:,:], Target.nz[:, self.CurrentLayer])
@@ -212,9 +200,10 @@ class TransmissionSpectroscopy:
 
         R_s = 1.0e5
         sz = Target.NumLayers
-        self.Spectrum = ((Target.Rp+ Target.zValues[0])**2+ \
+        self.Spectrum = ((Target.Rp+ Target.zValuesCm[0])**2+ \
                         2.0*np.matmul(1.0-(np.exp(-(2.0*(np.matmul(self.alpha[:,0:sz-1],np.transpose(self.ds_[:,:sz-1])))))), \
-                        (Target.Rp+Target.zValues[:sz-1])*np.transpose(self.dz_[:sz-1])))/R_s**2
+                        (Target.Rp+Target.zValuesCm[:sz-1])*np.transpose(self.dz_[:sz-1])))/R_s**2
         self.Spectrum = self.Spectrum.flatten()
         Target.Rp/=1.e5
         self.SpectrumHeight = 0.5*(self.Spectrum/Target.Rp-Target.Rp)
+        return self.SpectrumHeight

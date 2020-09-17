@@ -15,14 +15,47 @@ def matlab_multiply(Array_A, Array_B):
 
 
 class System:
-    def __init__(self):
-        self.ParsePlanetFile()
-        self.ParseStarFile()
+    def __init__(self, PlanetParamsDict=None, StellarParamsDict=None, LoadFromFile=True):
+        '''
+        LoadFromFile: bool
+                      True if to be loaded from the data
+
+        '''
+
         self.InitiateConstants()
+        self.LoadFromFile = LoadFromFile
 
         self.MolDict = {"H2O":18.010565, "CO2":43.989830, "O3":47.984745,  "N2O":44.001062, \
-                        "HCl":35.976678, "CO":27.994915,  "CH4":16.031300, "NH3":17.026549, \
-                        "O2":31.98983,   "H2":2.015650,   "He":4.002602,   "N2":28.006148}
+        "HCl":35.976678, "CO":27.994915,  "CH4":16.031300, "NH3":17.026549, \
+        "O2":31.98983,   "H2":2.015650,   "He":4.002602,   "N2":28.006148}
+
+        self.MoleculeName = np.array(['H2O', 'CO2', 'CO', 'O3', 'CH4', 'N2', 'H2'])
+
+        if not(StellarParamsDict):
+            print("Assigning stellar parameters from the files.")
+            self.ParseStarFile()
+        else:
+            print("Assigning stellar parameters from the dictionary.")
+            self.StellarParams = {}
+            for key, value in StellarParamsDict.items():
+                self.StellarParams[key] = value
+
+        if self.LoadFromFile:
+            self.InitiateSystem()
+        elif PlanetParamsDict:
+            self.PlanetParams = {}
+            for key, value in PlanetParamsDict.items():
+                self.PlanetParams[key] = value
+
+
+    def InitiateSystem(self):
+        '''
+        Initiate the calculation for mean molecular mass
+        and assign the value for pressure and temperature
+        '''
+        if self.LoadFromFile:
+            self.ParsePlanetFile()
+
 
         #Unpacking the values
         self.Mp = self.PlanetParams['Mass']*self.M_ear                     #Mass in kg
@@ -36,8 +69,6 @@ class System:
         self.Gam =  self.PlanetParams['ALR']                      #Adiabatic Lapse Rate in [K.km^{-1}]
         self.Tinf =  self.PlanetParams['TInf']                    #Temperature in space in [K]:
 
-
-        self.MoleculeName = np.array(['H2O', 'CO2', 'CO', 'O3', 'CH4', 'N2', 'H2'])
 
         self.MixingRatios = np.array([self.PlanetParams['MR_H2O'], self.PlanetParams['MR_CO2'], \
                                       self.PlanetParams['MR_CO'], self.PlanetParams['MR_O3'], \
@@ -61,28 +92,38 @@ class System:
         #Has the data been loaded.
         self.CSDataLoaded = False
 
+
     def ParsePlanetFile(self):
         '''
         This function parses the planetary file
         '''
         self.PlanetParams = {}
-        FileContent = open("PlanetParam.ini", "r").readlines()
-        for Line in FileContent:
-            Item = Line.split("#")[0].replace(" ","")
-            key, Value = Item.split(":")
-            self.PlanetParams[key]=float(Value)
+
+        if os.path.exists("PlanetParam.ini"):
+            FileContent = open("PlanetParam.ini", "r").readlines()
+            for Line in FileContent:
+                Item = Line.split("#")[0].replace(" ","")
+                key, Value = Item.split(":")
+                self.PlanetParams[key]=float(Value)
+        else:
+            print("PlanetParam.ini does not exist in the local dictionary")
 
 
     def ParseStarFile(self):
         '''
         This function parses the star file i.e StelarParam.ini
         '''
+
         self.StellarParams = {}
-        FileContent = open("StellarParam.ini", "r").readlines()
-        for Line in FileContent:
-            Item = Line.split("#")[0].replace(" ","")
-            key, Value = Item.split(":")
-            self.StellarParams[key]=float(Value)
+
+        if os.path.exists("StellarParam.ini"):
+            FileContent = open("StellarParam.ini", "r").readlines()
+            for Line in FileContent:
+                Item = Line.split("#")[0].replace(" ","")
+                key, Value = Item.split(":")
+                self.StellarParams[key]=float(Value)
+        else:
+            print("StellarParam.ini does nopt exist in the local dictionary")
 
 
     def InitiateConstants(self):
@@ -124,15 +165,12 @@ class System:
 
         '''
 
-        print("Change this value... later")
-        self.Gam = 5.0
-        self.mu=19.127
-
         assert np.sign(self.Tinf-self.T0) == -np.sign(self.Gam)
 
         #atmospheric scaled height in km
         self.H0 =self.k_bo*self.T0/(self.mu/self.N_av*self.Gp)/1e5
         self.zValues = np.linspace(0,10,NumLayers)*self.H0
+        self.zValuesCm=self.zValues*1e5
         self.zStep = self.zValues[1] - self.zValues[0]
         self.TzAnalytical = self.Tinf-(self.Tinf-self.T0)*np.exp(self.zValues*self.Gam/(self.Tinf-self.T0))
 
@@ -161,9 +199,7 @@ class System:
         self.nz0 = self.N_av/22400.0*self.P0/self.P_atm*273.15/self.T0*self.MixingRatios
         self.NumLayers = len(self.zValues)
 
-
         self.nz = np.zeros((len(self.nz0), len(self.PzAnalytical)))
-
 
         for i in range(len(self.nz0)):
             self.nz[i,:] = self.nz0[i]*self.PzAnalytical
@@ -243,7 +279,6 @@ class System:
             self.CrossSectionData = np.zeros((NumTemp, NumPressure, NumWavelength, len(self.MoleculeName)))
             for MolCounter, Molecule in enumerate(self.MoleculeName):
                 print(MolCounter, ": ", Molecule)
-
                 CurrentData = np.load(os.path.join(CombinedLocation, Molecule+".npy"), mmap_mode='r')
                 self.CrossSectionData[:,:,:,MolCounter] = CurrentData
         pass

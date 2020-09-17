@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from bisect import bisect
 
 class JWSTInstrument:
-    def __init__(self, mode, UserBins=None):
+    def __init__(self, Target, Resolution=100):
         '''
         mode, UserBins=None
         '''
@@ -55,9 +55,9 @@ class JWSTInstrument:
         dl_l = 0.16
         m0_Flux = 1600
 
+        #zero magninitude
+
         NPhotons = 1600.0/10**(Target.Magnitude/2.5)*1.51e7*dl_l*1e-4
-        print("Method 2::", NPhotons)
-        input("Wait here...")
 
         #JWST parameters
         Area =  25.3*1e4   #JWST effective area in cm^2
@@ -66,7 +66,7 @@ class JWSTInstrument:
         #Calculate the expected number of photons in J band
         Qe = 0.95
 
-        print("The number of transits is given by:", NumTransits)
+
         #JBand_PhotonCount = Flux/EnergyPhoton*Qe*NumTransits*TDur*3600*Area
         JBand_PhotonCount = NPhotons*Qe*NumTransits*TDur*3600*Area
         DetectorMultiplier = 1.0
