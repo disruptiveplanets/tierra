@@ -3,6 +3,9 @@ import matplotlib.pyplot as plt
 from bisect import bisect
 import sys
 
+
+
+
 class TransmissionSpectroscopy:
 
     def __init__(self, Target):
@@ -135,10 +138,7 @@ class TransmissionSpectroscopy:
                     ZeroIndex = np.logical_or(np.isnan(self.CurrentInterpSigma), \
                                               ~np.isfinite(self.CurrentInterpSigma))
 
-                    print("Interpolated Index::")
-                    print("Invalid values:", np.sum(self.CurrentInterpSigma>1e-5))
 
-                    print("The current Interpolated sig")
                     #Replace nan with zeros
                     self.CurrentInterpSigma[ZeroIndex] = 0.0
 
@@ -149,11 +149,11 @@ class TransmissionSpectroscopy:
 
 
                     #The following is just for some diagnostic plot...
-                    if CurrentP>-5.0:
+                    if 1<0:#CurrentP>-5.0:
 
                         Sampling = 5
-                        Wavelength = Target.WavelengthArray*1e7
-                        SelectIndex = Wavelength<5000
+                        Wavelength = Target.WavelengthArray*1e4
+                        SelectIndex = Wavelength<5
 
 
                         Y1 = self.CurrentInterpSigma
@@ -177,10 +177,10 @@ class TransmissionSpectroscopy:
 
             elif Target.SmallFile:
 
+                #Use different interpolation method
+
                 co_t = (CurrentT-Target.TemperatureArray[TIndex-1])/(Target.TemperatureArray[TIndex]-Target.TemperatureArray[TIndex-1])
-
                 #co_p = (10.**CurrentP-10.**Target.PressureArray[PIndex-1])/(10.**Target.PressureArray[PIndex]-10.**Target.PressureArray[PIndex-1])
-
                 co_p = (CurrentP-Target.PressureArray[PIndex-1])/(Target.PressureArray[PIndex]-Target.PressureArray[PIndex-1])
 
 
@@ -195,15 +195,33 @@ class TransmissionSpectroscopy:
                                                   (co_t*co_p)*FourthTerm
 
 
-
-
-
-        R_s = 1.0e5
         sz = Target.NumLayers
-        self.Spectrum = ((Target.Rp+ Target.zValuesCm[0])**2+ \
+        #self.Spectrum = ((Target.Rp)**2+ \
+        #                2.0*np.matmul(1.0-(np.exp(-(2.0*(np.matmul(self.alpha[:,0:sz-1],np.transpose(self.ds_[:,:sz-1])))))), \
+        #                (Target.Rp+Target.zValuesCm[:sz-1])*np.transpose(self.dz_[:sz-1])))/Target.Rs**2
+        self.Spectrum = ((Target.Rp)**2+ \
                         2.0*np.matmul(1.0-(np.exp(-(2.0*(np.matmul(self.alpha[:,0:sz-1],np.transpose(self.ds_[:,:sz-1])))))), \
-                        (Target.Rp+Target.zValuesCm[:sz-1])*np.transpose(self.dz_[:sz-1])))/R_s**2
+                        (Target.Rp+Target.zValues[:sz-1])*np.transpose(self.dz_[:sz-1])))/Target.Rs**2
         self.Spectrum = self.Spectrum.flatten()
-        Target.Rp/=1.e5
-        self.SpectrumHeight = 0.5*(self.Spectrum/Target.Rp-Target.Rp)
-        return self.SpectrumHeight
+        self.SpectrumHeight = 0.5*(self.Spectrum*Target.RsKm**2/Target.RpKm-Target.RpKm)
+        return self.Spectrum, self.SpectrumHeight
+
+
+    def Rayleigh(self, Target):
+        '''
+        This function calculates the Rayleigh scattering.
+        '''
+
+        absorption_coeff += self._get_scattering_absorption(abundances,
+                P_cond, T_cond, scattering_factor, scattering_slope,
+                scattering_ref_wavelength)
+
+        Rp = -4*Target.k_bo*Target.T
+        print("Now calculating the rayleigh here...")
+        input("Wait here for the rayleigh scattering...")
+
+        plt.figure(figsize=(8,4))
+        plt.plot(Target.WavelengthArray*1e4, self.SpectrumHeight, "k-", lw=2)
+        plt.title("")
+        plt.xlim([0.5, 5.5])
+        plt.show()

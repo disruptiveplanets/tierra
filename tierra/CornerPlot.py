@@ -321,9 +321,9 @@ def DoubleCustomCornerPlot(Data1, Data2, Parameters, Values=None, CMapList=None,
     right = 0.95, bottom = 0.08, top = 0.89)
 
     if not(SaveName):
-        plt.savefig("CornerPlot.png")
-        plt.savefig("CornerPlot.pdf", format='pdf')
+        plt.savefig("Figures/CornerPlot.png")
+        #plt.savefig("CornerPlot.pdf", format='pdf')
     else:
-        plt.savefig("SaveName"+".png")
-        plt.savefig("CornerPlot.pdf", format='pdf')
+        plt.savefig("Figures/"+SaveName+"_Corner.png")
+        #plt.savefig("CornerPlot.pdf", format='pdf')
     plt.close('all')

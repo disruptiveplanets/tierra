@@ -64,6 +64,8 @@ class System:
         self.Ms = self.StellarParams['Mass']*self.M_sun
         self.Rs = self.StellarParams['Radius']*self.R_sun
 
+        self.RpKm = self.Rp/1.e5
+        self.RsKm = self.Rs/1.e5
         self.P0 = self.PlanetParams['P0']*self.P_atm              #Pressure in atmospheric pressure converted to Pascal
         self.T0 = self.PlanetParams['T0']                         #Temperature at Rp
         self.Gam =  self.PlanetParams['ALR']                      #Adiabatic Lapse Rate in [K.km^{-1}]
@@ -149,7 +151,7 @@ class System:
         self.sigma_bo = 5.670E-5                #stefan Boltzmann's Constant
 
 
-    def PT_Profile(self, NumLayers=50, ShowPlot=False):
+    def PT_Profile(self, zStep=0.25, ShowPlot=False):
         '''
         This method calculates the Pressure Temperature profile
         for the planet
@@ -157,8 +159,8 @@ class System:
         Parameters:
         -----------------
 
-        NumLayers: Integer
-                   Number of spacing for calculating the cross-section.
+        zStep: Float
+                   Stepsize in atmospheric scale.
 
         PlotFlag: Boolean
                   Default value is False. Plot the data if True.
@@ -169,7 +171,7 @@ class System:
 
         #atmospheric scaled height in km
         self.H0 =self.k_bo*self.T0/(self.mu/self.N_av*self.Gp)/1e5
-        self.zValues = np.linspace(0,10,NumLayers)*self.H0
+        self.zValues = np.arange(0,15,zStep)*self.H0
         self.zValuesCm=self.zValues*1e5
         self.zStep = self.zValues[1] - self.zValues[0]
         self.TzAnalytical = self.Tinf-(self.Tinf-self.T0)*np.exp(self.zValues*self.Gam/(self.Tinf-self.T0))
@@ -203,6 +205,8 @@ class System:
 
         for i in range(len(self.nz0)):
             self.nz[i,:] = self.nz0[i]*self.PzAnalytical
+
+        self.nzSquared = self.nz*self.nz
 
 
         if ShowPlot:
@@ -243,7 +247,7 @@ class System:
         '''
 
         CombinedLocation = os.path.join(Location, SubFolder)
-        print("Loading the cross-section")
+        print("Loading the cross-section from: ", CombinedLocation)
 
         AllFileList = np.array(glob.glob(os.path.join(Location, SubFolder)+"/*.npy"))
         MoleculeFileList = np.array([FileItem.split("/")[-1][:-4] for FileItem in AllFileList])
@@ -252,7 +256,7 @@ class System:
         assert os.path.exists(Location+"/Wavelength.npy"), "Wavelength.npy is needed "
         assert len(MoleculeFileList)>=len(self.MoleculeName), "The number number of molecules are not here."
 
-        self.WavelengthArray = np.load(Location+"/Wavelength.npy", mmap_mode='r')
+        self.WavelengthArray = np.load(Location+"/Wavelength.npy")
         self.TemperatureArray = np.loadtxt(Location+"/Temperature.txt")
         self.PressureArray = np.loadtxt(Location+"/Pressure.txt")
 
@@ -260,8 +264,9 @@ class System:
         NumTemp = len(self.TemperatureArray)
         NumPressure = len(self.PressureArray)
 
+        print("The size of single molecule ::", Size )
         #If greater than 2 GB
-        if Size>2000:
+        if Size>4000:
             self.SmallFile = False
         else:
             self.SmallFile = True

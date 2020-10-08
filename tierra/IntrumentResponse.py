@@ -95,9 +95,6 @@ class JWSTInstrument:
             Photons_Wavelength[i] = DetectorMultiplier*JBand_PhotonCount*NormalizationFactor
             StartWaveLength = self.WaveLengthBins[i]
 
-        print("The photons wavelength is given by:")
-        print(Photons_Wavelength)
-
         PoissonNoise = np.sqrt(Photons_Wavelength)
         print("The number of bins is::", 1500.0/len(Photons_Wavelength))
 
