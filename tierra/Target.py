@@ -197,7 +197,7 @@ class System:
 
 
         #Number density in per cm^3
-        self.nz0 = self.N_av*self.P0/self.P_atm*273.15/self.T0*self.MixingRatios
+        #self.nz0 = self.N_av*self.P0/self.P_atm*273.15/self.T0*self.MixingRatios
         self.nz0 = self.N_av/22400.0*self.P0/self.P_atm*273.15/self.T0*self.MixingRatios
         self.NumLayers = len(self.zValues)
 

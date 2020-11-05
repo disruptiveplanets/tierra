@@ -12,6 +12,7 @@ def logLikelihood(theta, Wavelength, WavelengthLower, WavelengthUpper, Spectrum,
     '''
     The log likelihood for calculation
     '''
+
     P0, T0, ALR, TInf, MR_N2Log, MR_COLog, MR_H2OLog, \
     MR_CO2Log, MR_CH4Log, MR_O3Log, MR_H2Log = theta
 
@@ -23,10 +24,10 @@ def logLikelihood(theta, Wavelength, WavelengthLower, WavelengthUpper, Spectrum,
     MR_O3Log<-20.0 or MR_H2Log<-20.0:
         return -np.inf
 
-    if TInf<100 or TInf>850:
+    if TInf<100 or TInf>810:
         return -np.inf
 
-    if T0<100 or T0>850:
+    if T0<100 or T0>810:
         return -np.inf
 
     if P0<0 or P0>100:
@@ -34,7 +35,6 @@ def logLikelihood(theta, Wavelength, WavelengthLower, WavelengthUpper, Spectrum,
 
     if np.sign(TInf-T0) == np.sign(ALR):
         return -np.inf
-
 
     #Converting the log value.
     MR_H2O = 10**MR_H2OLog
@@ -80,18 +80,18 @@ def logLikelihood(theta, Wavelength, WavelengthLower, WavelengthUpper, Spectrum,
     CurrentWavelength = CurrentSystem.WavelengthArray*1e4
     CurrentModel = T1.Spectrum*1e6
 
-
     BinnedModel = np.zeros(len(Wavelength))
 
+
+    global StartIndexAll, StopIndexAll
     counter = 0
-    for Wl, Wp in zip(WavelengthLower, WavelengthUpper):
-        StartIndex = bisect(CurrentWavelength, Wl)
-        StopIndex = bisect(CurrentWavelength, Wp)
+    for StartIndex,StopIndex in zip(StartIndexAll, StopIndexAll):
         BinnedModel[counter] = np.mean(CurrentModel[StartIndex:StopIndex])
         counter+=1
 
     Residual = np.sum(np.power(Spectrum-BinnedModel,2)/(SpectrumErr*SpectrumErr))
     ChiSqr = -0.5*Residual
+
 
     if Residual<LeastResidual:
        print("Saving the best model.")
@@ -103,7 +103,7 @@ def logLikelihood(theta, Wavelength, WavelengthLower, WavelengthUpper, Spectrum,
     return ChiSqr
 
 
-def RunMCMC( PlanetParamsDict, StellarParamsDict, CSLocation=None, AssignedzStep=0.15, SubFolderName="CS_1", SaveName="Default", NSteps=1500):
+def RunMCMC( PlanetParamsDict, StellarParamsDict, CSLocation=None, AssignedzStep=0.25, SubFolderName="CS_1", SaveName="Default", NSteps=1500):
     '''
     Run MCMC value.
 
@@ -148,9 +148,22 @@ def RunMCMC( PlanetParamsDict, StellarParamsDict, CSLocation=None, AssignedzStep
     CurrentSystem = Target.System(PlanetParamsDict, StellarParamsDict, LoadFromFile=False)
     CurrentSystem.LoadCrossSection(BaseLocation, SubFolder=SubFolderName)
 
-    Wavelength, WavelengthLower, WavelengthUpper, Spectrum, SpectrumErr  = np.loadtxt("data/Case1.txt", delimiter=",", unpack=True)
 
-    nWalkers = 100
+
+
+    Wavelength, WavelengthLower, WavelengthUpper, Spectrum, SpectrumErr  = np.loadtxt("data/Case1R100.txt", delimiter=",", unpack=True)
+
+    global StartIndexAll, StopIndexAll
+    StartIndexAll = []
+    StopIndexAll = []
+    CurrentWavelength = CurrentSystem.WavelengthArray*1e4
+    for Wl, Wp in zip(WavelengthLower, WavelengthUpper):
+        StartIndex = bisect(CurrentWavelength, Wl)
+        StopIndex = bisect(CurrentWavelength, Wp)
+        StartIndexAll.append(StartIndex)
+        StopIndexAll.append(StopIndex)
+
+    nWalkers = 22
     ActualValue = []
 
     print(PlanetParamsDict)
@@ -211,17 +224,18 @@ def RunMCMC( PlanetParamsDict, StellarParamsDict, CSLocation=None, AssignedzStep
     T0Init = np.random.normal(PlanetParamsDict['T0'], 10., nWalkers)            #Temperature at Rp
     ALRInit = np.random.normal(PlanetParamsDict['ALR'], 0.1, nWalkers)          #Adiabatic Lapse Rate in [K.km^{-1}]
     TInfInit = np.random.normal(PlanetParamsDict['TInf'], 10., nWalkers)          #Temperature in space in [K]:
+    MR_N2LogInit = np.random.normal(MR_N2Log, MR_N2LogErr, nWalkers)      #Mixing ratio for nitrogen
+    MR_COLogInit = np.random.normal(MR_COLog, MR_COLogErr, nWalkers)        #Mixing ratio for carbonmonoxide
     MR_H2OLogInit = np.random.normal(MR_H2OLog, MR_H2OLogErr, nWalkers)     #Mixing ratio for water
     MR_CO2LogInit = np.random.normal(MR_CO2Log, MR_CO2LogErr, nWalkers)     #Mixing ratio for carbondioxide
-    MR_COLogInit = np.random.normal(MR_COLog, MR_COLogErr, nWalkers)        #Mixing ratio for carbonmonoxide
-    MR_O3LogInit = np.random.normal(MR_O3Log, MR_O3LogErr, nWalkers)      #Mixing ratio for oxygen
     MR_CH4LogInit = np.random.normal(MR_CH4Log, MR_CH4LogErr, nWalkers)     #Mixing ratio for methane
-    MR_N2LogInit = np.random.normal(MR_N2Log, MR_N2LogErr, nWalkers)      #Mixing ratio for nitrogen
+    MR_O3LogInit = np.random.normal(MR_O3Log, MR_O3LogErr, nWalkers)      #Mixing ratio for oxygen
     MR_H2LogInit = np.random.normal(MR_H2Log, MR_H2LogErr, nWalkers)          #Mixing ratio for hydrogen
 
     global ParameterNames
     ParameterNames = ["P0", "T0", "ALR", "TInf", "MR_N2Log", "MR_COLog", \
     "MR_H2OLog", "MR_CO2Log",  "MR_CH4Log", "MR_O3Log", "MR_H2Log"]
+
 
 
     StartingGuess = np.column_stack((P0Init, T0Init, ALRInit, TInfInit, \
@@ -230,7 +244,8 @@ def RunMCMC( PlanetParamsDict, StellarParamsDict, CSLocation=None, AssignedzStep
 
     _, nDim = np.shape(StartingGuess)
 
-    sampler = emcee.EnsembleSampler(nWalkers, nDim, logLikelihood, args=[Wavelength, WavelengthLower, WavelengthUpper, Spectrum, SpectrumErr], threads=4)
+
+    sampler = emcee.EnsembleSampler(nWalkers, nDim, logLikelihood, args=[Wavelength, WavelengthLower, WavelengthUpper, Spectrum, SpectrumErr], threads=8)
     sampler.run_mcmc(StartingGuess, NSteps, progress=True)
 
     #Make the best parameter
@@ -283,7 +298,7 @@ def RunMCMC( PlanetParamsDict, StellarParamsDict, CSLocation=None, AssignedzStep
     plt.xlabel("Wavelength (nm)")
     plt.ylabel("$(R_p/R_s)^2$")
     plt.xlim(min(Wavelength)-0.1, max(Wavelength)+0.1)
-    plt.ylim(8100, 8900)
+    plt.ylim(min(T1.Spectrum*1e6), max(T1.Spectrum*1e6))
     plt.savefig("Figures/BestModel_"+SaveName+".png")
     plt.close('all')
 

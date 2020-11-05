@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from bisect import bisect
 import sys
-
+from numba import prange
 
 
 
@@ -24,7 +24,6 @@ class TransmissionSpectroscopy:
         self.Distance[np.isnan(self.Distance)]=0.0
         '''
 
-
         sz = Target.NumLayers
         z_ = Target.zValuesCm
         self.dz_= np.concatenate(([z_[0]], z_[1:sz]-z_[:sz-1]))
@@ -33,9 +32,6 @@ class TransmissionSpectroscopy:
         for i in range(sz-1):
             for j in range(i,sz-1):
                 x__[i,j]=np.sqrt((Target.Rp+Target.zValuesCm[j+1])**2.0-(Target.Rp+Target.zValuesCm[i])**2.0)
-
-
-
 
         XNew = np.zeros(np.shape(x__))
         XNew[:,1:] = x__[:,:sz-2]
@@ -48,7 +44,6 @@ class TransmissionSpectroscopy:
         XNew_[:,1:] = self.ds_[:,:sz-2]
         self.ds_ = 0.5*(self.ds_ + XNew_)
 
-
         #Initiating the alpha function
         self.alpha = np.zeros((len(Target.WavelengthArray),Target.NumLayers),dtype=np.float32)
 
@@ -56,7 +51,7 @@ class TransmissionSpectroscopy:
 
 
 
-    def CalculateTransmission(self, Target, ShowPlot=False):
+    def CalculateTransmission(self, Target, ShowPlot=False, interpolation="bilinear"):
         '''
         This method calculates the spectrum given the
 
@@ -64,8 +59,10 @@ class TransmissionSpectroscopy:
         -----------
         Target: Tierra Target object
 
-
         ShowPlot: Boolean
+
+        interpolation: string
+            Either use the bilinear or hill method
 
         Returns
         --------
@@ -81,7 +78,7 @@ class TransmissionSpectroscopy:
 
 
 
-        for self.CurrentLayer in range(Target.NumLayers):
+        for self.CurrentLayer in prange(Target.NumLayers):
             CurrentT = Target.TzAnalytical[self.CurrentLayer]
             CurrentP = np.log10(Target.PzAnalytical[self.CurrentLayer])
 
@@ -94,7 +91,7 @@ class TransmissionSpectroscopy:
             #See if they are exactly same
             m = (CurrentP-P1)/(P2-P1)
 
-            #Assign 0
+
             if not(Target.SmallFile):
                 self.alpha[:,self.CurrentLayer] = 0.0
                 for Counter, self.CurrentMolecule in enumerate(Target.MoleculeName):
@@ -179,21 +176,54 @@ class TransmissionSpectroscopy:
 
                 #Use different interpolation method
 
-                co_t = (CurrentT-Target.TemperatureArray[TIndex-1])/(Target.TemperatureArray[TIndex]-Target.TemperatureArray[TIndex-1])
-                #co_p = (10.**CurrentP-10.**Target.PressureArray[PIndex-1])/(10.**Target.PressureArray[PIndex]-10.**Target.PressureArray[PIndex-1])
-                co_p = (CurrentP-Target.PressureArray[PIndex-1])/(Target.PressureArray[PIndex]-Target.PressureArray[PIndex-1])
+                if "bilinear" in interpolation.lower():
+                    co_t = (CurrentT-Target.TemperatureArray[TIndex-1])/(Target.TemperatureArray[TIndex]-Target.TemperatureArray[TIndex-1])
+                    #co_p = (10.**CurrentP-10.**Target.PressureArray[PIndex-1])/(10.**Target.PressureArray[PIndex]-10.**Target.PressureArray[PIndex-1])
+                    co_p = (CurrentP-Target.PressureArray[PIndex-1])/(Target.PressureArray[PIndex]-Target.PressureArray[PIndex-1])
+
+                    FirstTerm = np.matmul(Target.CrossSectionData[TIndex-1, PIndex-1,:,:], Target.nz[:, self.CurrentLayer])
+                    SecondTerm = np.matmul(Target.CrossSectionData[TIndex-1, PIndex,:,:], Target.nz[:, self.CurrentLayer])
+                    ThirdTerm = np.matmul(Target.CrossSectionData[TIndex, PIndex-1,:,:], Target.nz[:, self.CurrentLayer])
+                    FourthTerm = np.matmul(Target.CrossSectionData[TIndex, PIndex,:,:], Target.nz[:, self.CurrentLayer])
+
+                    self.alpha[:,self.CurrentLayer] = ((1-co_t)*(1-co_p))*FirstTerm + \
+                                                      ((1-co_t)*co_p)*SecondTerm +  \
+                                                      (co_t*(1-co_p))*ThirdTerm + \
+                                                      (co_t*co_p)*FourthTerm
+
+                elif "hill" in interpolation.lower():
+
+                    Sigma11 = Target.CrossSectionData[TIndex-1, PIndex-1, :]
+                    Sigma12 = Target.CrossSectionData[TIndex-1, PIndex, :]
+                    Sigma21 = Target.CrossSectionData[TIndex, PIndex-1, :]
+                    Sigma22 = Target.CrossSectionData[TIndex, PIndex, :]
+
+                    #Performing hill interpolation
+                    UndSigma1 = Sigma11+ m*(Sigma12-Sigma11)
+                    UndSigma2 = Sigma21+ m*(Sigma22-Sigma21)
+
+                    RatioSigma = UndSigma1/UndSigma2
+                    bi = 1./(1./Temp2-1./Temp1)*np.log(RatioSigma)
+                    ai = UndSigma1*np.exp(bi/Temp1)
+
+                    self.CurrentInterpSigma = ai*np.exp(-bi/CurrentT)
 
 
-                FirstTerm = np.matmul(Target.CrossSectionData[TIndex-1, PIndex-1,:,:], Target.nz[:, self.CurrentLayer])
-                SecondTerm = np.matmul(Target.CrossSectionData[TIndex-1, PIndex,:,:], Target.nz[:, self.CurrentLayer])
-                ThirdTerm = np.matmul(Target.CrossSectionData[TIndex, PIndex-1,:,:], Target.nz[:, self.CurrentLayer])
-                FourthTerm = np.matmul(Target.CrossSectionData[TIndex, PIndex,:,:], Target.nz[:, self.CurrentLayer])
+                    ZeroIndex = np.logical_or(np.isnan(self.CurrentInterpSigma), \
+                                              ~np.isfinite(self.CurrentInterpSigma))
 
-                self.alpha[:,self.CurrentLayer] = ((1-co_t)*(1-co_p))*FirstTerm + \
-                                                  ((1-co_t)*co_p)*SecondTerm +  \
-                                                  (co_t*(1-co_p))*ThirdTerm + \
-                                                  (co_t*co_p)*FourthTerm
+                    #Replace nan with zeros
+                    self.CurrentInterpSigma[ZeroIndex] = 0.0
 
+                    #print("Adding the rayleigh scattering for hydrogen")
+                    #plt.figure()
+                    #plt.plot(Target., Target.)
+                    #plt.show()
+
+                    self.alpha[:,self.CurrentLayer] = np.matmul(self.CurrentInterpSigma, Target.nz[:, self.CurrentLayer])
+
+                else:
+                    raise ValueError("Use either bilinear/hill interpolation.")
 
         sz = Target.NumLayers
         #self.Spectrum = ((Target.Rp)**2+ \
