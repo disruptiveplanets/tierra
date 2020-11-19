@@ -87,7 +87,6 @@ class System:
         MuMolParamValues = np.concatenate((self.MolParamValues, [self.MolDict['He']]))
         MuNumDensity = (1.e-6/self.k_bo)*MuMixingRatio*(self.P0/self.T0)           #in cm-3
 
-
         #Mean molecular mass
         self.mu = sum(MuMolParamValues*MuNumDensity)/sum(MuNumDensity)
 
@@ -171,9 +170,10 @@ class System:
 
         #atmospheric scaled height in km
         self.H0 =self.k_bo*self.T0/(self.mu/self.N_av*self.Gp)/1e5
-        self.zValues = np.arange(0,15,zStep)*self.H0
+        self.zValues = np.arange(0,50,zStep)*self.H0
         self.zValuesCm=self.zValues*1e5
         self.zStep = self.zValues[1] - self.zValues[0]
+
         self.TzAnalytical = self.Tinf-(self.Tinf-self.T0)*np.exp(self.zValues*self.Gam/(self.Tinf-self.T0))
 
 

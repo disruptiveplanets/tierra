@@ -48,7 +48,7 @@ def BinningDataNIRSpecPrism(WavelengthHS=None, ValuesHS=None, ErrorFlag=False):
 
 
 
-def BinningDataCombined(WavelengthHS=None, RValue=100, ValuesHS=None, ErrorFlag=False):
+def BinningDataCombined(WavelengthHS=None, RValue=100, ValuesHS=None, ErrorFlag=False, PlanetType="Earth"):
     '''
     Function that estimates the error for an observed cross-section:
 
@@ -64,12 +64,18 @@ def BinningDataCombined(WavelengthHS=None, RValue=100, ValuesHS=None, ErrorFlag=
 
     Parameters = "WavLow,WavUpp,WavC,BinnedNoise,Npix"
 
-    if RValue==100:
+    if RValue==100 and PlanetType.upper()=="EARTH":
         Parameters = "WavLow,WavUpp,WavC,BinnedNoise,Npix"
         Location = __file__.replace("JWSTErrorbar.py", "Combined.R%s.txt" %str(int(RValue)))
-    elif RValue==3000:
+    elif RValue==100 and PlanetType.upper()=="HJ":
+        Parameters = "WavLow,WavUpp,WavC,BinnedNoise,Npix"
+        Location = __file__.replace("JWSTErrorbar.py", "Combined.R%s.HJ.txt" %str(int(RValue)))
+    elif RValue==3000 and PlanetType.upper()=="EARTH":
         Parameters = "WavLow,WavUpp,WavC,BinnedNoise"
         Location = __file__.replace("JWSTErrorbar.py", "Combined.R%s.txt" %str(int(RValue)))
+    elif RValue==3000 and PlanetType.upper()=="HJ":
+        Parameters = "WavLow,WavUpp,WavC,BinnedNoise"
+        Location = __file__.replace("JWSTErrorbar.py", "Combined.R%s.HJ.txt" %str(int(RValue)))
     else:
         print("No such binning scheme is available")
         assert 1==0

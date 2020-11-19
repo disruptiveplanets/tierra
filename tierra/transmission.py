@@ -5,7 +5,6 @@ import sys
 from numba import prange
 
 
-
 class TransmissionSpectroscopy:
 
     def __init__(self, Target):
@@ -73,12 +72,10 @@ class TransmissionSpectroscopy:
         '''
 
         #Now solve for the atmosphere of the planet
-
         self.Spectrum = np.zeros(len(Target.WavelengthArray), dtype=np.float32)
 
-
-
-        for self.CurrentLayer in prange(Target.NumLayers):
+        #for self.CurrentLayer in prange(Target.NumLayers):
+        for self.CurrentLayer in range(Target.NumLayers):
             CurrentT = Target.TzAnalytical[self.CurrentLayer]
             CurrentP = np.log10(Target.PzAnalytical[self.CurrentLayer])
 

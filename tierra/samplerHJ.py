@@ -15,14 +15,15 @@ def logLikelihood(theta, Wavelength, WavelengthLower, WavelengthUpper, Spectrum,
     '''
 
     P0, T0, ALR, TInf, MR_N2Log, MR_COLog, MR_H2OLog, \
-    MR_CO2Log, MR_CH4Log, MR_O3Log, MR_H2Log = theta
+    MR_CO2Log, MR_CH4Log, MR_O3Log = theta
 
-    if MR_N2Log>0.0 or MR_COLog>0.0 or MR_H2OLog>0.0 or MR_CO2Log>0.0 or MR_CH4Log>0.0 or \
-    MR_O3Log>0.0 or MR_H2Log>0.0:
+    if MR_N2Log>-0.5 or MR_COLog>-0.5 or MR_H2OLog>-0.5 or MR_CO2Log>-0.5 or MR_CH4Log>-0.5 or \
+    MR_O3Log>-0.5:
+    #    print("Case1")
         return -np.inf
 
     if MR_N2Log<-20.0 or MR_COLog<-20.0 or MR_H2OLog<-20.0 or MR_CO2Log<-20.0 or MR_CH4Log<-20.0 or \
-    MR_O3Log<-20.0 or MR_H2Log<-20.0:
+    MR_O3Log<-20.0:
         return -np.inf
 
     if TInf<100 or TInf>810:
@@ -44,13 +45,13 @@ def logLikelihood(theta, Wavelength, WavelengthLower, WavelengthUpper, Spectrum,
     MR_O3 = 10**MR_O3Log
     MR_CH4 = 10**MR_CH4Log
     MR_N2 = 10**MR_N2Log
-    MR_H2 = 10**MR_H2Log
+    #MR_H2 = 10**MR_H2Log
 
-    MR_Combined = MR_H2O + MR_N2 + MR_CO + MR_CO2 + MR_CH4 + MR_O3 +\
-                  MR_H2Log
+    #MR_Combined = MR_H2O + MR_N2 + MR_CO + MR_CO2 + MR_CH4 + MR_O3 +\
+    #              MR_H2Log
 
-    if MR_Combined>1.0:
-        return -np.inf
+    #if MR_Combined>1.0:
+    #    return -np.inf
 
     #Calculate the PT Profile
     CurrentSystem.PlanetParams['P0'] = P0
@@ -63,9 +64,14 @@ def logLikelihood(theta, Wavelength, WavelengthLower, WavelengthUpper, Spectrum,
     CurrentSystem.PlanetParams['MR_O3'] = MR_O3
     CurrentSystem.PlanetParams['MR_CH4'] = MR_CH4
     CurrentSystem.PlanetParams['MR_N2'] = MR_N2
-    CurrentSystem.PlanetParams['MR_H2'] = MR_H2
-
+    CurrentSystem.PlanetParams['MR_H2'] = 0.90
     global LeastResidual, ParameterNames, CurrentSaveName, CurrentzStep
+
+    #CurrentSystem.InitiateSystem()
+    #CurrentSystem.PT_Profile(zStep=CurrentzStep, ShowPlot=False)
+    #T1 = TransmissionSpectroscopy(CurrentSystem)
+    #T1.CalculateTransmission(CurrentSystem)
+
 
     try:
         CurrentSystem.InitiateSystem()
@@ -78,10 +84,12 @@ def logLikelihood(theta, Wavelength, WavelengthLower, WavelengthUpper, Spectrum,
              print(key,":",value)
         return -np.inf
 
+
     CurrentWavelength = CurrentSystem.WavelengthArray*1e4
     CurrentModel = T1.Spectrum*1e6
 
     BinnedModel = np.zeros(len(Wavelength))
+
 
     global StartIndexAll, StopIndexAll
     counter = 0
@@ -96,10 +104,14 @@ def logLikelihood(theta, Wavelength, WavelengthLower, WavelengthUpper, Spectrum,
     if Residual<LeastResidual:
        print("Saving the best model.")
        LeastResidual = Residual
-       with open("MCMCParams/BestParam"+CurrentSaveName+".txt", 'w+') as f:
+       with open("MCMCParams/BestParam"+CurrentSaveName+".HJ.txt", 'w+') as f:
           f.write("Residual:"+str(Residual)+"\n")
           for key,value in zip(ParameterNames, theta):
               f.write(key+":"+str(value)+"\n")
+       if 1==0:
+          plt.figure()
+          plt.errorbar(Wavelength, Spectrum, yerr=SpectrumErr)
+          plt.savefig("BestFigHJ.png")
     return ChiSqr
 
 
@@ -150,7 +162,7 @@ def RunMCMC( PlanetParamsDict, StellarParamsDict, CSLocation=None, AssignedzStep
     CurrentSystem = Target.System(PlanetParamsDict, StellarParamsDict, LoadFromFile=False)
     CurrentSystem.LoadCrossSection(BaseLocation, SubFolder=SubFolderName)
 
-    Wavelength, WavelengthLower, WavelengthUpper, Spectrum, SpectrumErr  = np.loadtxt("data/Case1.R100.Earth.txt", delimiter=",", unpack=True)
+    Wavelength, WavelengthLower, WavelengthUpper, Spectrum, SpectrumErr  = np.loadtxt("data/Case1.R100.HJFitting.txt", delimiter=",", unpack=True)
 
     global StartIndexAll, StopIndexAll
     StartIndexAll = []
@@ -162,7 +174,7 @@ def RunMCMC( PlanetParamsDict, StellarParamsDict, CSLocation=None, AssignedzStep
         StartIndexAll.append(StartIndex)
         StopIndexAll.append(StopIndex)
 
-    nWalkers = 22
+    nWalkers = 20
     ActualValue = []
 
 
@@ -172,7 +184,6 @@ def RunMCMC( PlanetParamsDict, StellarParamsDict, CSLocation=None, AssignedzStep
     MR_O3Log = np.log10(PlanetParamsDict['MR_O3'])
     MR_CH4Log = np.log10(PlanetParamsDict['MR_CH4'])
     MR_N2Log = np.log10(PlanetParamsDict['MR_N2'])
-    MR_H2Log = np.log10(PlanetParamsDict['MR_H2'])
 
     #Convert the mixing ratio into log of the mixing ratio
     if np.isfinite(MR_H2OLog):
@@ -211,11 +222,7 @@ def RunMCMC( PlanetParamsDict, StellarParamsDict, CSLocation=None, AssignedzStep
         MR_N2Log = -5
         MR_N2LogErr = 0.25
 
-    if np.isfinite(MR_H2Log):
-        MR_H2LogErr = np.abs(0.2*MR_H2Log)
-    else:
-        MR_H2Log = -5
-        MR_H2LogErr = 0.25
+
 
     P0Init = np.random.normal(PlanetParamsDict['P0'],0.1, nWalkers)            #Pressure at R_p in atm
     T0Init = np.random.normal(PlanetParamsDict['T0'], 10., nWalkers)            #Temperature at Rp
@@ -227,17 +234,14 @@ def RunMCMC( PlanetParamsDict, StellarParamsDict, CSLocation=None, AssignedzStep
     MR_CO2LogInit = np.random.normal(MR_CO2Log, MR_CO2LogErr, nWalkers)     #Mixing ratio for carbondioxide
     MR_CH4LogInit = np.random.normal(MR_CH4Log, MR_CH4LogErr, nWalkers)     #Mixing ratio for methane
     MR_O3LogInit = np.random.normal(MR_O3Log, MR_O3LogErr, nWalkers)      #Mixing ratio for oxygen
-    MR_H2LogInit = np.random.normal(MR_H2Log, MR_H2LogErr, nWalkers)          #Mixing ratio for hydrogen
 
     global ParameterNames
     ParameterNames = ["P0", "T0", "ALR", "TInf", "MR_N2Log", "MR_COLog", \
-    "MR_H2OLog", "MR_CO2Log",  "MR_CH4Log", "MR_O3Log", "MR_H2Log"]
-
-
+    "MR_H2OLog", "MR_CO2Log",  "MR_CH4Log", "MR_O3Log"]
 
     StartingGuess = np.column_stack((P0Init, T0Init, ALRInit, TInfInit, \
-                                     MR_N2LogInit, MR_COLogInit, MR_H2OLogInit, MR_CO2LogInit, \
-                                     MR_CH4LogInit, MR_O3LogInit, MR_H2LogInit))
+                                     MR_N2LogInit, MR_COLogInit, MR_H2OLogInit,
+                                     MR_CO2LogInit, MR_CH4LogInit, MR_O3LogInit))
 
     _, nDim = np.shape(StartingGuess)
 
@@ -253,7 +257,7 @@ def RunMCMC( PlanetParamsDict, StellarParamsDict, CSLocation=None, AssignedzStep
     BestParameters = sampler.chain[LocX[0], LocY[0], :]
 
     BestP0, BestT0, BestALR, BestTInf, BestMR_N2Log, BestMR_COLog, BestMR_H2OLog, \
-    BestMR_CO2Log, BestMR_CH4Log, BestMR_O3Log, BestMR_H2Log = BestParameters
+    BestMR_CO2Log, BestMR_CH4Log, BestMR_O3Log = BestParameters
 
     print("The best P0 value is::", BestP0)
     print("The best temperature is::", BestT0)
@@ -265,7 +269,7 @@ def RunMCMC( PlanetParamsDict, StellarParamsDict, CSLocation=None, AssignedzStep
     MR_O3 = 10**BestMR_O3Log
     MR_CH4 = 10**BestMR_CH4Log
     MR_N2 = 10**BestMR_N2Log
-    MR_H2 = 10**BestMR_H2Log
+    MR_H2 = 0.90
 
     #Calculate the PT Profile
     CurrentSystem.PlanetParams['P0'] = BestP0
@@ -288,7 +292,7 @@ def RunMCMC( PlanetParamsDict, StellarParamsDict, CSLocation=None, AssignedzStep
     plt.figure(figsize=(12,8))
     plt.plot(-np.mean(sampler.lnprobability, axis=0))
     plt.yscale("log")
-    plt.savefig("Figures/LogProbability_"+SaveName+".png")
+    plt.savefig("Figures/LogProbability_"+SaveName+".HJ.png")
     plt.close('all')
 
 
@@ -299,7 +303,7 @@ def RunMCMC( PlanetParamsDict, StellarParamsDict, CSLocation=None, AssignedzStep
     plt.ylabel("$(R_p/R_s)^2$")
     plt.xlim(min(Wavelength)-0.1, max(Wavelength)+0.1)
     plt.ylim(min(T1.Spectrum*1e6), max(T1.Spectrum*1e6))
-    plt.savefig("Figures/BestModel_"+SaveName+".png")
+    plt.savefig("Figures/BestModel_"+SaveName+".HJ.png")
     plt.close('all')
 
     #Now use the data
@@ -307,14 +311,14 @@ def RunMCMC( PlanetParamsDict, StellarParamsDict, CSLocation=None, AssignedzStep
     X,Y,Z = np.shape(Samples)
     print(X,Y,Z)
 
-    SaveMCMCName = "MCMC_Data/"+SaveName+".npy"
+    SaveMCMCName = "MCMC_Data/"+SaveName+".HJ.npy"
     np.save(SaveMCMCName, Samples)
 
     #Remove the burnin
     SamplesRemoved = Samples[:,Y//2:,:]
     SamplesFlattened = SamplesRemoved.reshape(X*Y//2, Z)
 
-    SaveFigName = "Figures/"+SaveName+".png"
+    SaveFigName = "Figures/"+SaveName+".HJ.png"
     plt.figure(figsize=(20,20))
     corner.corner(SamplesFlattened, labels=ParameterNames, title_fmt="5.3f",quantiles=[0.158, 0.5, 0.842], show_titles=True, title_kwargs={"fontsize": 12})
     plt.savefig(SaveFigName)
