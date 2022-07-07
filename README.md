@@ -12,10 +12,16 @@ The code uses emcee for performing the data.
 
 * [Installation]
 
-To run this project, install it locally using python3:
+First make the clone of the github by:
+```
+$ git clone https://github.com/disruptiveplanets/tierra
+```
+
+
+To run this project, install it locally using python3. You might need super user privilege to install.
 
 ```
-$ cd ../tierra
+$ cd tierra
 $ python3 setup.py install
 ```
 
