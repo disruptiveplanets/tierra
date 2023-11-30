@@ -2,12 +2,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 from bisect import bisect_left
 import sys
-from numba import prange
 
 
 class TransmissionSpectroscopy:
 
-    def __init__(self, Target, CIA=False):
+    def __init__(self, Target, beta=-4.0, tau0=0.0001, CIA=False):
         '''
         Initiate the transmission
         '''
@@ -15,7 +14,9 @@ class TransmissionSpectroscopy:
 
         #Flag to collision induced absportion flag
         self.CIA = CIA
-
+        
+        self.beta = beta                          #Haze scattering factor
+        self.tau0 = tau0                          #Reference tau0 for the haze scattering
         if self.CIA:
             assert hasattr(Target, 'CIA_CS')
 
@@ -44,7 +45,7 @@ class TransmissionSpectroscopy:
 
 
 
-    def CalculateTransmission(self, Target, ShowPlot=False, interpolation="bilinear"):
+    def CalculateTransmission(self, Target, ShowPlot=False):
         '''
         This method calculates the spectrum given the
 
@@ -62,14 +63,17 @@ class TransmissionSpectroscopy:
         Array
 
         Spectrum of the planet is returned.
-
         '''
 
         #Initiating the alpha function
         self.alpha = np.zeros((len(Target.WavelengthArray),Target.NumLayers),dtype=np.float64)
 
+        #for i in range(Target.NumLayers):
+        #    self.alpha[:,i] += self.tau0*(Target.WavelengthArray/5e-5)**self.beta*np.exp(-Target.zValuesCm[i]/Target.H0cm)
+
         #Now solve for the atmosphere of the planet
         self.Spectrum = np.zeros(len(Target.WavelengthArray), dtype=np.float64)
+
 
         #for self.CurrentLayer in prange(Target.NumLayers):
         for self.CurrentLayer in range(Target.NumLayers):
@@ -78,125 +82,60 @@ class TransmissionSpectroscopy:
 
             TIndex = bisect_left(Target.TemperatureArray, CurrentT)
             PIndex = bisect_left(Target.PressureArray, CurrentP)
-            #Add if statement for equality
+           
 
-            #Use different interpolation method
-
-            if "bilinear" in interpolation.lower():
-
-                co_t = (CurrentT-Target.TemperatureArray[TIndex-1])/(Target.TemperatureArray[TIndex]-Target.TemperatureArray[TIndex-1])
-                if CurrentP>-5:
-                    co_p = (CurrentP-Target.PressureArray[PIndex-1])/(Target.PressureArray[PIndex]-Target.PressureArray[PIndex-1])
-                else:
-                    co_p = 0.0
-
-                assert -1e-16<co_t<1.000000001
-                assert -1e-16<co_p<1.000000001
-
-                if co_p>0:
-                    FirstTerm = Target.CrossSectionData[TIndex-1, PIndex-1,:,:]@Target.nz[:, self.CurrentLayer]
-                    SecondTerm = Target.CrossSectionData[TIndex-1, PIndex,:,:]@Target.nz[:, self.CurrentLayer]
-                    ThirdTerm = Target.CrossSectionData[TIndex, PIndex-1,:,:]@Target.nz[:, self.CurrentLayer]
-                    FourthTerm = Target.CrossSectionData[TIndex, PIndex,:,:]@Target.nz[:, self.CurrentLayer]
-
-                    self.alpha[:,self.CurrentLayer] += ((1-co_t)*(1-co_p))*FirstTerm + \
-                                                       ((1-co_t)*co_p)*SecondTerm +  \
-                                                       (co_t*(1-co_p))*ThirdTerm + \
-                                                       (co_t*co_p)*FourthTerm
-
-
-                elif co_p == 0:
-                    FirstTerm = Target.CrossSectionData[TIndex-1, PIndex,:,:]@Target.nz[:, self.CurrentLayer]
-                    ThirdTerm = Target.CrossSectionData[TIndex, PIndex,:,:]@Target.nz[:, self.CurrentLayer]
-
-                    self.alpha[:,self.CurrentLayer] += (1-co_t)*FirstTerm + \
-                                                      co_t*ThirdTerm
-
-                if self.CIA:
-                    self.alpha[:,self.CurrentLayer] +=   \
-                    (Target.nz_H2_ama[self.CurrentLayer]*Target.nz_H2_ama[self.CurrentLayer])*((1-co_t)*Target.CIA_CS[TIndex-1,0,:]+(co_t)*Target.CIA_CS[TIndex,0,:]) + \
-                    (Target.nz_H2_ama[self.CurrentLayer]*Target.nz_H2_ama[self.CurrentLayer]*15./85.)*((1-co_t)*Target.CIA_CS[TIndex-1,1,:]+(co_t)*Target.CIA_CS[TIndex,1,:]) + \
-                    (Target.nz_N2_ama[self.CurrentLayer]*Target.nz_N2_ama[self.CurrentLayer])*((1-co_t)*Target.CIA_CS[TIndex-1,2,:]+(co_t)*Target.CIA_CS[TIndex,2,:])
-
-                    SelectIndex = self.alpha[:, self.CurrentLayer]<0
-                    self.alpha[SelectIndex, self.CurrentLayer] = 0.0
-
-
-
-
-            elif "hill" in interpolation.lower():
-
-                co_t = (CurrentT-Target.TemperatureArray[TIndex-1])/(Target.TemperatureArray[TIndex]-Target.TemperatureArray[TIndex-1])
-                if PIndex>0.5:
-                    #If the pressure index is not zero basically
-
-                    Temp1, Temp2 = [Target.TemperatureArray[TIndex-1], Target.TemperatureArray[TIndex]]
-                    P1, P2 = [Target.PressureArray[PIndex-1], Target.PressureArray[PIndex]]
-
-                    #See if they are exactly same
-                    m = (CurrentP-P1)/(P2-P1)
-
-                    assert -1e-16<m<1.000000001
-                    Sigma11 = Target.CrossSectionData[TIndex-1, PIndex-1, :]
-                    Sigma12 = Target.CrossSectionData[TIndex-1, PIndex, :]
-                    Sigma21 = Target.CrossSectionData[TIndex, PIndex-1, :]
-                    Sigma22 = Target.CrossSectionData[TIndex, PIndex, :]
-
-                elif PIndex == 0:
-                    #See if the pressure is lower than the smallest pressure
-                    m = 0.0
-                    Sigma11 = Target.CrossSectionData[TIndex-1, PIndex, :]
-                    Sigma12 = Target.CrossSectionData[TIndex-1, PIndex, :]
-                    Sigma21 = Target.CrossSectionData[TIndex, PIndex, :]
-                    Sigma22 = Target.CrossSectionData[TIndex, PIndex, :]
-
-                #Performing hill interpolation
-                UndSigma1 = Sigma11+ m*(Sigma12-Sigma11)
-                UndSigma2 = Sigma21+ m*(Sigma22-Sigma21)
-
-                RatioSigma = UndSigma1/UndSigma2
-                bi = 1./(1./Temp2-1./Temp1)*np.log(RatioSigma)
-                ai = UndSigma1*np.exp(bi/Temp1)
-
-                self.CurrentInterpSigma = ai*np.exp(-bi/CurrentT)
-
-
-                ZeroIndex = np.logical_or(np.isnan(self.CurrentInterpSigma), \
-                                          ~np.isfinite(self.CurrentInterpSigma))
-
-                #Replace nan with zeros
-                self.CurrentInterpSigma[ZeroIndex] = 0.0
-                self.alpha[:,self.CurrentLayer] = np.matmul(self.CurrentInterpSigma, Target.nz[:, self.CurrentLayer])
-
-
-                if self.CIA:
-                    self.alpha[:,self.CurrentLayer] +=   \
-                            (Target.nz_H2_ama[self.CurrentLayer]*Target.nz_H2_ama[self.CurrentLayer])*((1-co_t)*Target.CIA_CS[TIndex,0,:]+(co_t)*Target.CIA_CS[TIndex+1,0,:]) + \
-                            (Target.nz_H2_ama[self.CurrentLayer]*Target.nz_H2_ama[self.CurrentLayer]*15./85.)*((1-co_t)*Target.CIA_CS[TIndex,1,:]+(co_t)*Target.CIA_CS[TIndex+1,1,:]) + \
-                            (Target.nz_N2_ama[self.CurrentLayer]*Target.nz_N2_ama[self.CurrentLayer])*((1-co_t)*Target.CIA_CS[TIndex,2,:]+(co_t)*Target.CIA_CS[TIndex+1,2,:])
-                    SelectIndex = self.alpha[:, self.CurrentLayer]<0
-                    self.alpha[SelectIndex, self.CurrentLayer] = 0.0
-
+        
+            co_t = (CurrentT-Target.TemperatureArray[TIndex-1])/(Target.TemperatureArray[TIndex]-Target.TemperatureArray[TIndex-1])
+            if CurrentP>-5:
+                co_p = (CurrentP-Target.PressureArray[PIndex-1])/(Target.PressureArray[PIndex]-Target.PressureArray[PIndex-1])
             else:
-                raise ValueError("Use either bilinear/hill interpolation.")
+                co_p = 0.0
+
+            assert -1e-16<co_t<1.000000001
+            assert -1e-16<co_p<1.000000001
+
+            if co_p>0:
+                FirstTerm = Target.CrossSectionData[TIndex-1, PIndex-1,:,:]@Target.nz[:, self.CurrentLayer]
+                SecondTerm = Target.CrossSectionData[TIndex-1, PIndex,:,:]@Target.nz[:, self.CurrentLayer]
+                ThirdTerm = Target.CrossSectionData[TIndex, PIndex-1,:,:]@Target.nz[:, self.CurrentLayer]
+                FourthTerm = Target.CrossSectionData[TIndex, PIndex,:,:]@Target.nz[:, self.CurrentLayer]
+
+                self.alpha[:,self.CurrentLayer] += np.abs(((1-co_t)*(1-co_p))*FirstTerm + \
+                                                            ((1-co_t)*co_p)*SecondTerm +  \
+                                                            (co_t*(1-co_p))*ThirdTerm + \
+                                                            (co_t*co_p)*FourthTerm)
 
 
+            elif co_p == 0:
+                FirstTerm = Target.CrossSectionData[TIndex-1, PIndex,:,:]@Target.nz[:, self.CurrentLayer]
+                ThirdTerm = Target.CrossSectionData[TIndex, PIndex,:,:]@Target.nz[:, self.CurrentLayer]
 
+                self.alpha[:,self.CurrentLayer] += np.abs((1-co_t)*FirstTerm + \
+                                                    co_t*ThirdTerm)
+
+            if self.CIA:
+                if Target.N2Present:
+                    self.alpha[:,self.CurrentLayer] += np.abs((Target.nz_N2_ama[self.CurrentLayer]*Target.nz_N2_ama[self.CurrentLayer])*((1-co_t)*Target.CIA_CS[2,TIndex-1,:]+(co_t)*Target.CIA_CS[2,TIndex,:]))
+                if Target.H2Present:
+                     self.alpha[:,self.CurrentLayer] +=  (Target.nz_H2_ama[self.CurrentLayer]*Target.nz_H2_ama[self.CurrentLayer])*((1-co_t)*Target.CIA_CS[0,TIndex-1,:]+(co_t)*Target.CIA_CS[0,TIndex,:]) + \
+                     np.abs((Target.nz_H2_ama[self.CurrentLayer]*Target.nz_H2_ama[self.CurrentLayer]*0.157)*((1-co_t)*Target.CIA_CS[1,TIndex-1,:]+(co_t)*Target.CIA_CS[1,TIndex,:]))   \
+                       
+                     
 
         sz = Target.NumLayers
 
-
+      
         self.Spectrum = ((Target.Rp)**2+ \
                         2.0*np.matmul(1.0-(np.exp(-(2.0*(np.matmul(self.alpha[:,0:sz-1],np.transpose(self.ds_[:,:sz-1])))))), \
                         (Target.Rp+Target.zValuesCm[:sz-1])*np.transpose(self.dz_cm[:sz-1])))/Target.Rs**2
-        self.Spectrum = self.Spectrum.flatten()
+                        
+        self.Spectrum = self.Spectrum.flatten()*1e6 #Converting into ppm
 
         ##Following two are equivaluent
-        self.SpectrumHeight = 0.5*(self.Spectrum*Target.Rs**2/Target.Rp-Target.Rp)
+        self.SpectrumHeight = 0.5*(self.Spectrum/Target.Rp-Target.Rp)*1e-5
 
 
-        return self.Spectrum, self.SpectrumHeight
-
+        return self.SpectrumHeight/1e5 #This is in the km
 
 
     def CalculateContributionFunction(self, Target, ShowPlot=False, interpolation="bilinear"):
@@ -221,17 +160,16 @@ class TransmissionSpectroscopy:
         '''
 
         #Now solve for the atmosphere of the planet
-
+        
         self.AllSpectrum = np.zeros((len(Target.WavelengthArray), Target.NumLayers+1), dtype=np.float64)
-
-
+        
         #for self.CurrentLayer in prange(Target.NumLayers):
         for Outerlayer in range(-1,Target.NumLayers):
             print("The value of Outerlayer is:", Outerlayer)
 
             #Initialize the spectrum to zeros
             self.Spectrum = np.zeros(len(Target.WavelengthArray), dtype=np.float64)
-
+            
             #Initializing the alpha function
             self.alpha = np.zeros((len(Target.WavelengthArray),Target.NumLayers),dtype=np.float64)
             for self.CurrentLayer in range(Target.NumLayers):
@@ -239,7 +177,7 @@ class TransmissionSpectroscopy:
                 if Outerlayer==self.CurrentLayer:
                     continue
 
-
+                    
                 CurrentT = Target.TzAnalytical[self.CurrentLayer]
                 CurrentP = np.log10(Target.PzAnalytical[self.CurrentLayer])
 
@@ -269,7 +207,7 @@ class TransmissionSpectroscopy:
                         ThirdTerm = Target.CrossSectionData[TIndex, PIndex-1,:,:]@Target.nz[:, self.CurrentLayer]
                         FourthTerm = Target.CrossSectionData[TIndex, PIndex,:,:]@Target.nz[:, self.CurrentLayer]
 
-                        self.alpha[:,self.CurrentLayer] += ((1-co_t)*(1-co_p))*FirstTerm + \
+                        self.alpha[:,self.CurrentLayer] = ((1-co_t)*(1-co_p))*FirstTerm + \
                                                         ((1-co_t)*co_p)*SecondTerm +  \
                                                         (co_t*(1-co_p))*ThirdTerm + \
                                                         (co_t*co_p)*FourthTerm
@@ -279,18 +217,16 @@ class TransmissionSpectroscopy:
                         FirstTerm = Target.CrossSectionData[TIndex-1, PIndex,:,:]@Target.nz[:, self.CurrentLayer]
                         ThirdTerm = Target.CrossSectionData[TIndex, PIndex,:,:]@Target.nz[:, self.CurrentLayer]
 
-                        self.alpha[:,self.CurrentLayer] += (1-co_t)*FirstTerm + \
+                        self.alpha[:,self.CurrentLayer] = (1-co_t)*FirstTerm + \
                                                         co_t*ThirdTerm
 
                     if self.CIA:
-                        #print("the value of co_t is::", co_t)
-                        self.alpha[:,self.CurrentLayer] +=   \
-                        (Target.nz_H2_ama[self.CurrentLayer]*Target.nz_H2_ama[self.CurrentLayer])*((1-co_t)*Target.CIA_CS[TIndex,0,:]+(co_t)*Target.CIA_CS[TIndex+1,0,:]) + \
-                        (Target.nz_H2_ama[self.CurrentLayer]*Target.nz_H2_ama[self.CurrentLayer]*9./90.)*((1-co_t)*Target.CIA_CS[TIndex,1,:]+(co_t)*Target.CIA_CS[TIndex+1,1,:]) + \
-                        (Target.nz_N2_ama[self.CurrentLayer]*Target.nz_N2_ama[self.CurrentLayer])*((1-co_t)*Target.CIA_CS[TIndex,2,:]+(co_t)*Target.CIA_CS[TIndex+1,2,:])
-
-                        SelectIndex = self.alpha[:, self.CurrentLayer]<0
-                        self.alpha[SelectIndex, self.CurrentLayer] = 0.0
+                        if Target.N2Present:
+                            self.alpha[:,self.CurrentLayer] += np.abs((Target.nz_N2_ama[self.CurrentLayer]*Target.nz_N2_ama[self.CurrentLayer])*((1-co_t)*Target.CIA_CS[2,TIndex-1,:]+(co_t)*Target.CIA_CS[2,TIndex,:]))
+                        if Target.H2Present:
+                            self.alpha[:,self.CurrentLayer] +=  (Target.nz_H2_ama[self.CurrentLayer]*Target.nz_H2_ama[self.CurrentLayer])*((1-co_t)*Target.CIA_CS[0,TIndex-1,:]+(co_t)*Target.CIA_CS[0,TIndex,:]) + \
+                            np.abs((Target.nz_H2_ama[self.CurrentLayer]*Target.nz_H2_ama[self.CurrentLayer]*0.157)*((1-co_t)*Target.CIA_CS[1,TIndex-1,:]+(co_t)*Target.CIA_CS[1,TIndex,:]))   \
+                
 
 
 
@@ -343,7 +279,7 @@ class TransmissionSpectroscopy:
                                 (Target.nz_N2_ama[self.CurrentLayer]*Target.nz_N2_ama[self.CurrentLayer])*((1-co_t)*Target.CIA_CS[TIndex,2,:]+(co_t)*Target.CIA_CS[TIndex+1,2,:])
                         SelectIndex = self.alpha[:, self.CurrentLayer]<0
                         self.alpha[SelectIndex, self.CurrentLayer] = 0.0
-
+                            
                 else:
                     raise ValueError("Use either bilinear/hill interpolation.")
 
@@ -361,12 +297,11 @@ class TransmissionSpectroscopy:
             ##Following two are equivaluent
             self.SpectrumHeight = 0.5*(self.Spectrum*Target.Rs**2/Target.Rp-Target.Rp)
 
-            #First is where all the layers are included
-            #self.AllSpectrum[:,Outerlayer+1] = self.SpectrumHeight
-            self.AllSpectrum[:,Outerlayer+1] = self.Spectrum
+            #First is where all the layers are included    
+            self.AllSpectrum[:,Outerlayer+1] = self.SpectrumHeight
 
-        print("Now calculate the contribution function")
-
+        print("Now calculate the contribution function")    
+        
         self.ContributionFunction = np.zeros(Target.NumLayers, dtype=np.float64)
 
         R_Nom = self.AllSpectrum[:,0]
@@ -378,10 +313,9 @@ class TransmissionSpectroscopy:
         TotalSum = np.sum(self.ContributionFunction)
         self.ContributionFunction = self.ContributionFunction/TotalSum
 
-        LogPressure = np.log10(Target.PzAnalytical)
+        LogPressure = np.log10(Target.PzAnalytical)    
 
-        #Normalize the area to 1 so the total contribution function is 100%
         Area = np.trapz(LogPressure, self.ContributionFunction)
+        return self.ContributionFunction/Area
 
 
-        return self.ContributionFunction/Area, self.AllSpectrum

@@ -2,9 +2,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import glob
+from scipy.interpolate import interp1d
+
 
 class System:
-    def __init__(self, PlanetParamsDict=None, StellarParamsDict=None, LoadFromFile=True):
+    def __init__(self, MoleculeNames, PlanetParamsDict, StellarParamsDict):
         '''
         LoadFromFile: bool
                       True if to be loaded from the data
@@ -12,83 +14,102 @@ class System:
         '''
 
         self.InitiateConstants()
-        self.LoadFromFile = LoadFromFile
+
+
+        #Store the dictionaries and parameters into class variables    
+        self.PlanetParams = PlanetParamsDict
+        print(PlanetParamsDict)
+        self.StellarParams = StellarParamsDict
+        self.MoleculeNames = MoleculeNames[:]  
+        
+        #self.HeH2Ratio = self.PlanetParams.get('HeH2Ratio', 0.157)
+
+        LocationN2Index = (np.array(self.MoleculeNames)=="MR_N2")+(np.array(self.MoleculeNames)=="N2")
+        self.N2Present =  np.sum(LocationN2Index)==1
+        if self.N2Present: 
+            self.N2Index = np.where(LocationN2Index)[0][0]
+
+        self.LocationH2Index = (np.array(self.MoleculeNames)=="MR_H2")+(np.array(self.MoleculeNames)=="H2")
+        self.H2Present =  np.sum(self.LocationH2Index)==1
+
+
+        if self.H2Present: 
+            self.H2Index = np.where(self.LocationH2Index)[0][0]   
+            #Add Helium according to the ratio of 1:0.157
+            self.MoleculeNames.append("He")  
+        
+        
+
+        self.PT = self.PlanetParams['PT']
 
         self.MolDict = {"H2O":18.010565, "CO2":43.989830, "O3":47.984745,  "N2O":44.001062, \
-        "HCl":35.976678, "CO":27.994915,  "CH4":16.031300, "NH3":17.026549, \
-        "O2":31.98983,   "H2":2.015650,   "He":4.002602,   "N2":28.006148}
+                        "13CO2":44.993185, "H2_18O":20.014811, "34SO2":65.957695, \
+                        "HCl":35.976678, "CO":27.994915,  "CH4":16.031300, "NH3":17.026549, \
+                        "O2":31.98983,   "H2":2.015650,   "He":4.002602,   "N2":28.006148, \
+                        "C2H2":26.015650, "C4H2":50.015650, "C2H4":28.031300, "C2H6":30.046950,\
+                        "13CH4":17.034655, "CH3D":17.037475, "HC3N":51.010899, "HCN":27.010899,\
+                        "C3H8":44.09562, "SO2":63.961901, "Na":22.989769, "K":39.0983, "H2S":33.987721}
 
-        self.MoleculeName = np.array(['H2O', 'CO2', 'CO', 'O3', 'CH4', 'N2', 'H2'])
 
-        if not(StellarParamsDict):
-            #print("Assigning stellar parameters from the files.")
-            self.ParseStarFile()
-        else:
-            #print("Assigning stellar parameters from the dictionary.")
-            self.StellarParams = {}
-            for key, value in StellarParamsDict.items():
-                self.StellarParams[key] = value
+        self.MolecularMass = []
+        for Molecule in self.MoleculeNames:
+            self.MolecularMass.append(self.MolDict[Molecule])
+        self.MolecularMass = np.array(self.MolecularMass)
 
-        if self.LoadFromFile:
-            self.InitiateSystem()
-        elif PlanetParamsDict:
-            self.PlanetParams = {}
-            for key, value in PlanetParamsDict.items():
-                self.PlanetParams[key] = value
-            self.InitiateSystem()
+       
+        if 'Mass' in self.StellarParams.keys():
+            self.Ms = self.StellarParams['Mass']*self.M_sun
+        if 'Radius' in self.StellarParams.keys():
+            self.Rs = self.StellarParams['Radius']*self.R_sun
+            self.RsKm = self.Rs/1.e5
 
-    def InitiateSystem(self):
+       
+        
+        #Now calculate the mean molecular mass of the atmosphere
+        self.InitiateSystem(PlanetParamsDict)
+
+        #To check in the cross-section has been loaded
+        self.CSDataLoaded = False
+
+
+
+    def InitiateSystem(self, PlanetParamsDict):
         '''
         Initiate the calculation for mean molecular mass
         and assign the value for pressure and temperature
         '''
-        if self.LoadFromFile:
-            self.ParsePlanetFile()
-
-
-        #Unpacking the values
-        self.Mp = self.PlanetParams['Mass']*self.M_ear                     #Mass in kg
-        self.Rp = self.PlanetParams['Radius'] *self.R_ear                  #Radius in cm
-        self.Gp = self.G_gr*self.Mp/(self.Rp*self.Rp)
-
-        self.Ms = self.StellarParams['Mass']*self.M_sun
-        self.Rs = self.StellarParams['Radius']*self.R_sun
-
+        
+        #Now setting up for PT profile
+        self.Rp = PlanetParamsDict['Radius']*self.R_ear          #Radius in cm
+        self.Mp = PlanetParamsDict['Mass']*self.M_ear            #Mass in grams
         self.RpKm = self.Rp/1.e5
-        self.RsKm = self.Rs/1.e5
-        self.P0 = self.PlanetParams['P0']*self.P_atm              #Pressure in atmospheric pressure converted to Pascal
-        self.T0 = self.PlanetParams['T0']                         #Temperature at Rp
-        self.Gam =  self.PlanetParams['ALR']                      #Adiabatic Lapse Rate in [K.km^{-1}]
-        self.Tinf =  self.PlanetParams['TInf']                    #Temperature in space in [K]:
+        self.Gp = self.G_gr*self.Mp/(self.Rp*self.Rp)
+        self.P0 = PlanetParamsDict['P0']*self.P_atm              #Pressure in atmospheric pressure converted to Pascal
+        self.T0 = PlanetParamsDict['T0']                         #Temperature at Rp
+        self.HeH2Ratio = PlanetParamsDict['HeH2Ratio']
 
-        self.MixingRatios = np.array([self.PlanetParams['MR_H2O'], self.PlanetParams['MR_CO2'], \
-                                      self.PlanetParams['MR_CO'], self.PlanetParams['MR_O3'], \
-                                      self.PlanetParams['MR_CH4'], self.PlanetParams['MR_N2'], \
-                                      self.PlanetParams['MR_H2']])
-
-        self.MolParamValues = np.array([self.MolDict['H2O'], self.MolDict['CO2'],self.MolDict['CO'],\
-                                        self.MolDict['O3'], self.MolDict['CH4'], self.MolDict['N2'],\
-                                        self.MolDict['H2']])
+        if int(self.PT)==2:
+            self.Tinf = PlanetParamsDict['Tinf']
+            self.Alpha = PlanetParamsDict['Alpha']           
 
 
-        #Number density in calculating the mean molecular mass, Take into consideration the invisible Helium fraction
-        MuMixingRatio = np.concatenate((self.MixingRatios, [self.MixingRatios[-1]*15./85.]))
+        self.MixingRatios = []
+        for MolItem in self.MoleculeNames:
+            if not("He" in MolItem):
+                NewKey = "MR_"+MolItem
+                self.MixingRatios.append(PlanetParamsDict[NewKey])
 
-        MuMolParamValues = np.concatenate((self.MolParamValues, [self.MolDict['He']]))
+        if self.H2Present:
+            # Use the HeH2Ratio from PlanetParamsDict
+            self.MixingRatios.append(self.MixingRatios[self.H2Index] * self.HeH2Ratio)
+            #self.MixingRatios.append(self.MixingRatios[self.H2Index] * 0.157)
+            self.PlanetParams["MR_He"] = self.MixingRatios[-1]
 
-        MuNumDensity = (1.e-6/self.k_bo)*MuMixingRatio*(self.P0/self.T0)           #in cm-3
-
-        #Mean molecular mass
-        self.mu = sum(MuMolParamValues*MuNumDensity)/sum(MuNumDensity)
-
-        #print("The sum of the mixing ratio is::", np.sum(MuMixingRatio))
-        #Make sure the mixing ratio is close to 1
-        assert (np.sum(MuMixingRatio)-1.0)<1e-3
-
-
-        #Has the data been loaded.
-        self.CSDataLoaded = False
-
+        self.MixingRatios = np.array(self.MixingRatios)
+        self.mu = np.sum(self.MixingRatios*self.MolecularMass)
+        #self.mu = 2.3
+        
+        
 
     def ParsePlanetFile(self):
         '''
@@ -132,9 +153,9 @@ class System:
         self.R_ear=6.371e8                      #earth's radius in centimeters
         self.r_t=1.496e13                       #1 AU in centimeters
         self.parsec = 3.085677e18               #parsec in centimeters
-        self.M_jup = 1.8986e30                  #Mass of Jupiter in kilograms
-        self.M_ear = 5.9736e27                  #Mass of the earth in kilograms
-        self.R_jup = 6.995e9                    #Radius of Jupiter in meters
+        self.M_jup = 1.8986e30                  #Mass of Jupiter in grams
+        self.M_ear = 5.9736e27                  #Mass of the earth in grams
+        self.R_jup = 6.995e9                    #Radius of Jupiter in centi meters
 
         #Physical constants
         self.G_gr = 6.67384E-8                  #Gravitational constant in CGS
@@ -147,10 +168,11 @@ class System:
         self.loschmidt = 2.6867811E19           #Lochsmidt number
 
 
-    def PT_Profile(self, zStep=0.25, ShowPlot=False):
+    def PT_Profile(self, zStep=0.25, ShowPlot=False, verbose=False):
         '''
         This method calculates the Pressure Temperature profile
-        for the planet
+        for the planet as well as the number density as the function of 
+        altitude(z).
 
         Parameters:
         -----------------
@@ -158,40 +180,86 @@ class System:
         zStep: Float
                    Stepsize in atmospheric scale.
 
-        PlotFlag: Boolean
+        ShowPlot: Boolean
                   Default value is False. Plot the data if True.
 
         '''
 
         #assert np.sign(self.Tinf-self.T0) == -np.sign(self.Gam)
+       
+        self.ScaleHeight = np.arange(0,100,zStep)    
+        self.H0 = self.k_bo*self.T0/(self.mu/self.N_av*self.Gp)/1e5 #H0 is in kilometers
+        self.H0cm = self.H0*1e5
+        self.MuNumDensity = (1.e-6/self.k_bo)*self.MixingRatios*(self.P0/self.T0)           #in cm-3
 
-        #atmospheric scaled height in km
-        self.H0 =self.k_bo*self.T0/(self.mu/self.N_av*self.Gp)/1e5 #H0 is in kilometers
-        self.ScaleHeight = np.arange(0,100,zStep)
-        self.zValues = self.ScaleHeight*self.H0 #In kilometers
-        self.dz = np.diff(self.zValues) #In kilometers
+       
 
-        self.zValuesCm=self.zValues*1e5
-        self.TzAnalytical = self.Tinf+(self.T0-self.Tinf)*np.exp(-self.zValues*self.Gam)
-        self.Gz = self.G_gr*self.Mp/((self.Rp+self.zValuesCm)*(self.Rp+self.zValuesCm))
-        self.Hz = self.k_bo*self.TzAnalytical/(self.mu/self.N_av*self.Gz)/1e5
+        if self.PT==1:
+            if verbose:
+                print("Using the isothermal profile.")
+            self.zValues = self.ScaleHeight*self.H0 #In kilometers
+            self.dz = np.diff(self.zValues) #In kilometers
+            self.zValuesCm=self.zValues*1e5
+            self.Gz = self.G_gr*self.Mp/((self.Rp+self.zValuesCm)**2)
 
-        self.PzAnalytical = [self.P0/self.P_atm]
-        for i in range(len(self.TzAnalytical)-1):
-            self.PzAnalytical.append(self.PzAnalytical[-1]*np.exp(-self.dz[i]/self.Hz[i]))
-        self.PzAnalytical = np.array(self.PzAnalytical) #In atm
-        self.PzAnalyticalLog = np.log10(self.PzAnalytical) #In atm
+            self.TzAnalytical = np.ones(len(self.zValues))*self.T0
+            self.Hz = self.k_bo*self.TzAnalytical/(self.mu/self.N_av*self.Gz)/1e5
 
-        self.dz_cm = self.dz*1e5
+            self.PzAnalytical = [self.P0/self.P_atm]
+            for i in range(len(self.TzAnalytical)-1):
+                self.PzAnalytical.append(self.PzAnalytical[-1]*np.exp(-self.dz[i]/self.Hz[i]))
+            self.PzAnalytical = np.array(self.PzAnalytical)    #In atmosphere 
+            self.PzAnalyticalLog = np.log10(self.PzAnalytical) #In atm
+            self.dz_cm = self.dz*1e5
 
-        SelectIndex = self.PzAnalyticalLog>-10.0
-        self.PzAnalytical = self.PzAnalytical[SelectIndex]
-        self.TzAnalytical = self.TzAnalytical[SelectIndex]
-        self.zValues = self.zValues[SelectIndex]
-        self.dz = np.diff(self.zValues)
-        self.zValuesCm = self.zValuesCm[SelectIndex]
-        self.Gz = self.Gz[SelectIndex]
-        self.Hz = self.Hz[SelectIndex]
+            SelectIndex = self.PzAnalyticalLog>-10.0
+            self.PzAnalytical = self.PzAnalytical[SelectIndex]
+            self.TzAnalytical = self.TzAnalytical[SelectIndex]
+            self.zValues = self.zValues[SelectIndex]
+            self.dz = np.diff(self.zValues)
+            self.zValuesCm = self.zValuesCm[SelectIndex]
+            #self.Gz = self.Gz[SelectIndex]
+            #self.Hz = self.Hz[SelectIndex]
+
+        elif self.PT==2: 
+            if verbose:
+                print("Using PT profile based on the transmission model.")    
+            CurrentGravity0= self.G_gr*self.Mp/((self.Rp)**2)    
+            self.H0 = self.k_bo*self.T0/(self.mu/self.N_av*CurrentGravity0)/1e5   
+            self.zValuesOld = self.ScaleHeight*self.H0 #In kilometers
+            self.zValuesCmOld = self.zValuesOld*1e5    #In centimeter
+            
+        
+            #Now use the second parametric case...
+            self.PzAnalytical = self.P0/self.P_atm*np.exp(-self.ScaleHeight)     #In units of atmosphere
+            self.PzAnalyticalLog = np.log10(self.PzAnalytical)
+            self.TzAnalytical = self.Tinf+(self.T0-self.Tinf)*np.exp((-self.Alpha*(self.PzAnalyticalLog+1.0)**2))
+
+            self.Gz = self.G_gr*self.Mp/((self.Rp+self.zValuesCmOld)**2)
+            self.Hz = self.H0*self.TzAnalytical/self.T0*CurrentGravity0/self.Gz
+           
+            self.zValues = [0]
+            for HzValues in self.Hz[:-1]:
+                self.zValues.append(self.zValues[-1]+HzValues*zStep)
+            self.zValues = np.array(self.zValues)
+
+            self.zValuesCm = self.zValues*1e5
+
+            self.dz = np.diff(self.zValues)
+            self.dz_cm = self.dz*1e5
+            SelectIndex = self.PzAnalyticalLog>-10.0 # change and compare
+            self.PzAnalytical = self.PzAnalytical[SelectIndex]
+
+            #Truncating the temperature at 10^-10 atmosphere
+            self.TzAnalytical = self.TzAnalytical[SelectIndex]
+            self.zValues = self.zValues[SelectIndex]
+            self.dz = np.diff(self.zValues)
+            self.zValuesCm = self.zValuesCm[SelectIndex]
+            self.Gz = self.Gz[SelectIndex]
+            self.Hz = self.Hz[SelectIndex]
+
+        
+    
 
         #Number density in per cm^3
         self.nz0 = self.N_av/22400.0*self.P0/self.P_atm*273.15/self.T0*self.MixingRatios
@@ -200,14 +268,18 @@ class System:
         self.nz = np.zeros((len(self.nz0), len(self.PzAnalytical)))
 
         for i in range(len(self.nz0)):
-            self.nz[i,:] = self.nz0[i]*self.PzAnalytical/self.PzAnalytical[0]
+           self.nz[i,:] = self.nz0[i]*self.PzAnalytical/self.PzAnalytical[0]
 
-        self.nz_N2_ama = self.nz[5,:]
-        self.nz_H2_ama = self.nz[6,:]
+        if self.N2Present:
+            self.nz_N2_ama = self.nz[self.N2Index, :]
+
+        if self.H2Present:
+            self.nz_H2_ama = self.nz[self.H2Index, :]    
 
 
         if ShowPlot:
             #Generating the figure
+          
             fig, ax = plt.subplots(figsize=(14,6),nrows=1, ncols=2)
             ax[0].plot(self.PzAnalytical, self.zValues, "r-", linewidth=2.5)
             ax[0].set_xlabel('Pressure (atm)', color='red', fontsize=20)
@@ -226,74 +298,68 @@ class System:
             LineStyles = [':', '-.', '--', '-']
             for i in range(len(self.nz0)):
                 ax[1].plot(self.nz[i,:], self.zValues,linewidth=1, \
-                linestyle=LineStyles[i%len(LineStyles)], label=self.MoleculeName[i])
+                linestyle=LineStyles[i%len(LineStyles)], label=self.MoleculeNames[i])
             ax[1].set_ylim([min(self.zValues), max(self.zValues)])
             ax[1].grid(True)
             ax[1].set_xscale('log')
             ax[1].set_ylabel('Atmosphere (km)', color='blue', fontsize=20)
             ax[1].legend(loc=1)
-            ax[1].set_xlabel('Pressure (atm)', color='red', fontsize=20)
-            ax[1].tick_params(axis='x', labelcolor='red')
             plt.tight_layout()
             plt.show()
 
 
 
-    def LoadCrossSection(self, Location="", SubFolder="", CIA=False):
+    def LoadCrossSection(self, Location, SubFolder="CS_1", CIA_Flag=False):
         '''
+        The location is expected to have
+        Pressure.txt where the pressure values are provided
+        Temperature.txt where the temperature values are provided
+        Wavelength.npy where the wavelength values are provided.
+
+        AllLocations: 
+            The list of molecules
+
         This method is supposed to load the cross-section
 
         The expected location is
         '''
 
-        CombinedLocation = os.path.join(Location, SubFolder)
-        AllFileList = np.array(glob.glob(os.path.join(Location, SubFolder)+"/*.npy"))
-        MoleculeFileList = np.array([FileItem.split("/")[-1][:-4] for FileItem in AllFileList])
-        Size = os.path.getsize(os.path.join(CombinedLocation,"H2O.npy"))/1e6
-
+        #Now load the cross-section based on the MR
+        #Now assign the name of the molecule we have here...
+       
         assert os.path.exists(Location+"/Wavelength.npy"), "Wavelength.npy is needed "
-        assert len(MoleculeFileList)>=len(self.MoleculeName), "The number number of molecules are not here."
-
+        
         self.WavelengthArray = np.load(Location+"/Wavelength.npy")
         self.TemperatureArray = np.loadtxt(Location+"/Temperature.txt")
         self.PressureArray = np.loadtxt(Location+"/Pressure.txt")
 
-        if CIA:
-            self.CIA_CS = np.load(Location+"/CIA/CIA_CS.npy")
-
-
+        if CIA_Flag:
+            self.CIA_CS = np.load(Location+"/CIA/CIA.npy")
 
         NumWavelength = len(self.WavelengthArray)
         NumTemp = len(self.TemperatureArray)
         NumPressure = len(self.PressureArray)
+        
+        #Copy the code to load the cross section here
+        All_CS_Available = np.array(glob.glob(Location+"/"+SubFolder+"/*.npy"))
+        MoleculesAvailable = [Item.split("/")[-1].replace(".npy","") for Item in All_CS_Available]
+        self.SelectedPath = []
+        for CurrentMolecule in self.MoleculeNames:
+            if not("He" in CurrentMolecule):
+                SelectIndex = np.array([(Path==CurrentMolecule) for Path in MoleculesAvailable])
+                assert np.sum(SelectIndex)==1,  "%s Molecule Not found" %CurrentMolecule
+                self.SelectedPath.append(str(All_CS_Available[SelectIndex][0]))
 
-        #If greater than 4 GB
-        if Size>4000:
-            self.SmallFile = False
-        else:
-            self.SmallFile = True
 
-        if not(self.SmallFile):
-            self.CH4Data = np.load(os.path.join(CombinedLocation, "CH4.npy"), mmap_mode='r')
-            self.COData = np.load(os.path.join(CombinedLocation, "CO.npy"), mmap_mode='r')
-            self.CO2Data = np.load(os.path.join(CombinedLocation, "CO2.npy"), mmap_mode='r')
-            self.H2Data = np.load(os.path.join(CombinedLocation, "H2.npy"), mmap_mode='r')
-            self.H2OData = np.load(os.path.join(CombinedLocation, "H2O.npy"), mmap_mode='r')
-            self.O3Data = np.load(os.path.join(CombinedLocation, "O3.npy"), mmap_mode='r')
-            self.N2Data = np.load(os.path.join(CombinedLocation, "N2.npy"), mmap_mode='r')
-            self.CSDataLoaded = True
+        #Make the CS matrix based on the number of molecules assigned        
+        self.CrossSectionData = np.zeros((NumTemp, NumPressure, NumWavelength, len(self.MoleculeNames)))
+        
+        for counter, CurrentPath in enumerate(self.SelectedPath):
+            print("Now loading:", CurrentPath)
+            CurrentCS = np.load(CurrentPath)
+            self.CrossSectionData[:,:,:,counter] = CurrentCS[:,:,:]
 
-        elif self.SmallFile:
-            self.CrossSectionData = np.zeros((NumTemp, NumPressure, NumWavelength, len(self.MoleculeName)))
-            for MolCounter, Molecule in enumerate(self.MoleculeName):
-                print(MolCounter, ": ", Molecule)
-                CurrentData = np.load(os.path.join(CombinedLocation, Molecule+".npy"), mmap_mode='r')
-                self.CrossSectionData[:,:,:,MolCounter] = CurrentData
+        self.CSDataLoaded = True
+       
+        
 
-        #Add offset to the Wavelength
-        if Size<10000 and not("interpolated" in Location.lower()):
-            #Add offset to the Wavelength
-            print("Applying the offset in the wavelength")
-            Difference = np.diff(self.WavelengthArray)/2.0
-            self.WavelengthArray[0:] -= Difference[0]
-            self.WavelengthArray[1:] -= Difference
