@@ -1,4 +1,4 @@
-![plot](./logo/LogoLR.png)
+![plot](./figures/LogoLR.png)
 Author: Prajwal Niraula
 Email: pniraula@mit.edu
 Insitute: MIT
@@ -28,3 +28,15 @@ $ python3 setup.py install
 ## [Cross-section]
 
 Cross-section should be separately downloaded. All the nine cross-sections related data are around 160GB space in your local space. If you are using the default cross-section this can be directly downloaded from the zenodo at:
+
+The Link will be updated soon
+
+
+
+## [Framework]
+
+The framework for perturbation test and is further discussed under the paper Niraula et. al 2022
+![plot](./figures/Flowchart.pdf)
+
+
+
