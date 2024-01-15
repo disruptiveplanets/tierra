@@ -201,6 +201,39 @@ class System:
 
         elif self.PT=="G10":
             """This is from Guillot profile...
+           def guillot_profile(pressures, kappa_IR, gamma, gravity, T_int, T_equ):
+                """
+                Adapted from petitRADTRANS
+
+                This function computes the temperature at various pressures in a planetary atmosphere
+                based on the Guillot (2010) temperature model (Equation 29 from the reference).
+                https://www.aanda.org/articles/aa/pdf/2010/12/aa13396-09.pdf
+
+                Parameters:
+                pressures (numpy array): An array of pressures in bars.
+                kappa_IR (float): Infrared opacity in cm^2/g.
+                gamma (float): Ratio of visual to infrared opacity.
+                gravity (float): Planetary surface gravity in cm/s^2.
+                T_int (float): Internal temperature of the planet in Kelvin.
+                T_equ (float): Equilibrium temperature of the planet in Kelvin.
+
+                Returns:
+                numpy array: Temperatures at the specified pressures, in Kelvin.
+
+                """
+                # Calculate optical depth
+                tau = pressures * 1e6 * kappa_IR / gravity
+
+                # Calculate irradiation temperature
+                T_irr = T_equ * np.sqrt(2)
+
+                # Compute temperature profile
+                T_profile = (0.75 * T_int**4 * (2 / 3 + tau) +
+                             0.75 * T_irr**4 / 4 * (2 / 3 + 1 / gamma / np.sqrt(3) +
+                             (gamma / np.sqrt(3) - 1 / np.sqrt(3) / gamma) *
+                             np.exp(-gamma * tau * np.sqrt(3)))) ** 0.25
+
+                return T_profile
 
             Talk about parameters + put the citation to the paper
             
