@@ -2,7 +2,9 @@
 Authors: 
 1. Prajwal Niraula --- pniraula@mit.edu
 2. Aaron Householder --- aaron593@mit.edu 
-Insitute: Earth, Atmosphere, and Planetary Science, MIT
+
+Institute: Earth, Atmosphere, and Planetary Science, MIT
+            
 
 ## [What is tierra?]
 TIERRA (TransmIssion spEctRoscopy of tRansiting plAnets) is a 1D spEctRoscopy code that  adopted and expanded in python by from the original Matlab by Julien de Wit (de Wit et. al 2016, 2018). Currently only 7 molecules were originally included in the code: methane, carbon-monoxide, carbon-dioxide, water, hydrogen, nitrogen and ozone as part of the study Niraula & de Wit et. al 2022). However this has been recently updated to include a wider range of molecules
