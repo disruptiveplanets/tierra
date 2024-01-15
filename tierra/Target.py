@@ -147,10 +147,11 @@ class System:
         self.loschmidt = 2.6867811E19           #Lochsmidt number
 
 
-    def PT_Profile(self, zStep=0.25, ShowPlot=False):
+        def PT_Profile(self, zStep=0.25, ShowPlot=False, verbose=False):
         '''
         This method calculates the Pressure Temperature profile
-        for the planet
+        for the planet as well as the number density as the function of 
+        altitude(z).
 
         Parameters:
         -----------------
@@ -158,40 +159,61 @@ class System:
         zStep: Float
                    Stepsize in atmospheric scale.
 
-        PlotFlag: Boolean
+        ShowPlot: Boolean
                   Default value is False. Plot the data if True.
 
         '''
 
         #assert np.sign(self.Tinf-self.T0) == -np.sign(self.Gam)
+       
+        self.ScaleHeight = np.arange(0,100,zStep)    
+        self.H0 = self.k_bo*self.T0/(self.mu/self.N_av*self.Gp)/1e5 #H0 is in kilometers
+        self.H0cm = self.H0*1e5
+        self.MuNumDensity = (1.e-6/self.k_bo)*self.MixingRatios*(self.P0/self.T0)           #in cm-3       
 
-        #atmospheric scaled height in km
-        self.H0 =self.k_bo*self.T0/(self.mu/self.N_av*self.Gp)/1e5 #H0 is in kilometers
-        self.ScaleHeight = np.arange(0,100,zStep)
-        self.zValues = self.ScaleHeight*self.H0 #In kilometers
-        self.dz = np.diff(self.zValues) #In kilometers
+        if self.PT=="Iso":
+            if verbose:
+                print("Using the isothermal profile.")
+            self.zValues = self.ScaleHeight*self.H0 #In kilometers
+            self.dz = np.diff(self.zValues) #In kilometers
+            self.zValuesCm=self.zValues*1e5
+            self.Gz = self.G_gr*self.Mp/((self.Rp+self.zValuesCm)**2)
 
-        self.zValuesCm=self.zValues*1e5
-        self.TzAnalytical = self.Tinf+(self.T0-self.Tinf)*np.exp(-self.zValues*self.Gam)
-        self.Gz = self.G_gr*self.Mp/((self.Rp+self.zValuesCm)*(self.Rp+self.zValuesCm))
-        self.Hz = self.k_bo*self.TzAnalytical/(self.mu/self.N_av*self.Gz)/1e5
+            self.TzAnalytical = np.ones(len(self.zValues))*self.T0
+            self.Hz = self.k_bo*self.TzAnalytical/(self.mu/self.N_av*self.Gz)/1e5
 
-        self.PzAnalytical = [self.P0/self.P_atm]
-        for i in range(len(self.TzAnalytical)-1):
-            self.PzAnalytical.append(self.PzAnalytical[-1]*np.exp(-self.dz[i]/self.Hz[i]))
-        self.PzAnalytical = np.array(self.PzAnalytical) #In atm
-        self.PzAnalyticalLog = np.log10(self.PzAnalytical) #In atm
+            self.PzAnalytical = [self.P0/self.P_atm]
+            for i in range(len(self.TzAnalytical)-1):
+                self.PzAnalytical.append(self.PzAnalytical[-1]*np.exp(-self.dz[i]/self.Hz[i]))
+            self.PzAnalytical = np.array(self.PzAnalytical)    #In atmosphere 
+            self.PzAnalyticalLog = np.log10(self.PzAnalytical) #In atm
+            self.dz_cm = self.dz*1e5
 
-        self.dz_cm = self.dz*1e5
+            SelectIndex = self.PzAnalyticalLog>-10.0
+            self.PzAnalytical = self.PzAnalytical[SelectIndex]
+            self.TzAnalytical = self.TzAnalytical[SelectIndex]
+            self.zValues = self.zValues[SelectIndex]
+            self.dz = np.diff(self.zValues)
+            self.zValuesCm = self.zValuesCm[SelectIndex]
+            #self.Gz = self.Gz[SelectIndex]
+            #self.Hz = self.Hz[SelectIndex]
+        
 
-        SelectIndex = self.PzAnalyticalLog>-10.0
-        self.PzAnalytical = self.PzAnalytical[SelectIndex]
-        self.TzAnalytical = self.TzAnalytical[SelectIndex]
-        self.zValues = self.zValues[SelectIndex]
-        self.dz = np.diff(self.zValues)
-        self.zValuesCm = self.zValuesCm[SelectIndex]
-        self.Gz = self.Gz[SelectIndex]
-        self.Hz = self.Hz[SelectIndex]
+        elif self.PT=="G10":
+            """This is from Guillot profile...
+
+            Talk about parameters + put the citation to the paper
+            
+            Code to be written by Aaron"""
+        
+        elif self.PT=="MS09": 
+            """Same as above"""
+
+
+        elif self.PT=="Poly": 
+            """Same as above but to be done by Prajwal"""
+
+    
 
         #Number density in per cm^3
         self.nz0 = self.N_av/22400.0*self.P0/self.P_atm*273.15/self.T0*self.MixingRatios
@@ -200,14 +222,18 @@ class System:
         self.nz = np.zeros((len(self.nz0), len(self.PzAnalytical)))
 
         for i in range(len(self.nz0)):
-            self.nz[i,:] = self.nz0[i]*self.PzAnalytical/self.PzAnalytical[0]
+           self.nz[i,:] = self.nz0[i]*self.PzAnalytical/self.PzAnalytical[0]
 
-        self.nz_N2_ama = self.nz[5,:]
-        self.nz_H2_ama = self.nz[6,:]
+        if self.N2Present:
+            self.nz_N2_ama = self.nz[self.N2Index, :]
+
+        if self.H2Present:
+            self.nz_H2_ama = self.nz[self.H2Index, :]    
 
 
         if ShowPlot:
             #Generating the figure
+          
             fig, ax = plt.subplots(figsize=(14,6),nrows=1, ncols=2)
             ax[0].plot(self.PzAnalytical, self.zValues, "r-", linewidth=2.5)
             ax[0].set_xlabel('Pressure (atm)', color='red', fontsize=20)
@@ -226,14 +252,12 @@ class System:
             LineStyles = [':', '-.', '--', '-']
             for i in range(len(self.nz0)):
                 ax[1].plot(self.nz[i,:], self.zValues,linewidth=1, \
-                linestyle=LineStyles[i%len(LineStyles)], label=self.MoleculeName[i])
+                linestyle=LineStyles[i%len(LineStyles)], label=self.MoleculeNames[i])
             ax[1].set_ylim([min(self.zValues), max(self.zValues)])
             ax[1].grid(True)
             ax[1].set_xscale('log')
             ax[1].set_ylabel('Atmosphere (km)', color='blue', fontsize=20)
             ax[1].legend(loc=1)
-            ax[1].set_xlabel('Pressure (atm)', color='red', fontsize=20)
-            ax[1].tick_params(axis='x', labelcolor='red')
             plt.tight_layout()
             plt.show()
 
